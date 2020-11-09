@@ -19,9 +19,9 @@ class CommandType(enum.Enum):
 
 class Command(collections.namedtuple("Command", ["command", "op", "arg1", "arg2"])):
 
-    ARITHMETIC_COMMANDS = set(
-        ["add", "sub", "neg", "eq", "gt", "lt", "and", "or", "not"]
-    )
+    ARITHMETIC_COMMANDS = {
+        "add", "sub", "neg", "eq", "gt", "lt", "and", "or", "not"
+    }
 
     @classmethod
     def build(cls, pieces: List[str]) -> "Command":
@@ -35,7 +35,7 @@ class Command(collections.namedtuple("Command", ["command", "op", "arg1", "arg2"
             command = CommandType.POP
             arg1 = pieces[1]
             arg2 = int(pieces[2])
-        elif op in ["add", "sub", "neg", "eq", "gt", "lt", "and", "or", "not"]:
+        elif op in cls.ARITHMETIC_COMMANDS:
             command = CommandType.ARITHMETIC
         return Command(command, op, arg1, arg2)
 
