@@ -388,7 +388,6 @@ M=D
 
 def main():
     import sys
-    import os.path
 
     # input and parser
     input_filename = sys.argv[1]
@@ -396,11 +395,12 @@ def main():
     parser = Parser(input_file)
 
     # output and writer
-    basename = os.path.basename(input_filename)
-    basename_wo_ext = os.path.splitext(basename)[0]
-    output_filename = basename_wo_ext + ".asm"
+    output_filename = input_filename.replace(".vm", ".asm")
     output_file = open(output_filename, "w")
     writer = CodeWriter(output_file)
+
+    print("Input: " + input_filename)
+    print("Output: " + output_filename)
     
     # main loop
     while True:
@@ -408,7 +408,7 @@ def main():
         if not parser.has_more_commands():
             break
         cmd = parser.get_current_command()
-        print(cmd)
+        # print(cmd)
         if cmd.command == CommandType.PUSH or cmd.command == CommandType.POP:
             writer.write_pushpop(cmd.command, cmd.arg1, cmd.arg2)
         elif cmd.command == CommandType.ARITHMETIC:
