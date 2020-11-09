@@ -103,10 +103,9 @@ class CodeWriter(object):
 
     TEMP_OFFSET = 5
 
-    STATIC_OFFSET = 16
-
     def __init__(self, f):
         self.f = f
+        self.count = 0
     
     @classmethod
     def _push(cls, register: str, index: int) -> str:
@@ -296,7 +295,20 @@ M=M+1
 """
 
     @classmethod
-    def _arithmetic(cls, op: str) -> str:
+    def _unary_arithmetic(cls, *operations) -> str:
+        ops = "\n".join(operations)
+        # M ... arg
+        return f"""
+@SP
+M=M-1
+A=M
+{ops}
+@SP
+M=M+1
+"""
+
+    @classmethod
+    def _arithmetic(cls, op: str, count: int) -> str:
         if op in cls.BINARY_OPERATORS:
             # D...arg1, M...arg2
             if op == "add":
@@ -304,35 +316,70 @@ M=M+1
             elif op == "sub":
                 return cls._binary_arithmetic("M=M-D")
             elif op == "eq":
-                # x=y
-                # <=> x-y=0
-                # <=> !(x-y != 0)
-                # <=> !((x-y) | 0)
                 return cls._binary_arithmetic(
-                    "D=M-D",
-                    "D=D|0",
-                    "M=!D"
-                    )
+                    f"""
+D=M-D
+@{count}.EQ.ELSE
+D;JNE
+D=-1
+@{count}.EQ.END
+0;JMP
+({count}.EQ.ELSE)
+D=0
+({count}.EQ.END)
+@SP
+A=M
+M=D
+""".strip())
             elif op == "gt":
-                pass
-            # eq gt lt
+                return cls._binary_arithmetic(
+                    f"""
+D=M-D
+@{count}.GT.ELSE
+D;JLE
+D=-1
+@{count}.GT.END
+0;JMP
+({count}.GT.ELSE)
+D=0
+({count}.GT.END)
+@SP
+A=M
+M=D
+""".strip())
+            elif op == "lt":
+                return cls._binary_arithmetic(
+                    f"""
+D=M-D
+@{count}.LT.ELSE
+D;JGE
+D=-1
+@{count}.LT.END
+0;JMP
+({count}.LT.ELSE)
+D=0
+({count}.LT.END)
+@SP
+A=M
+M=D
+""".strip())
             elif op == "and":
                 return cls._binary_arithmetic("M=M&D")
             elif op == "or":
                 return cls._binary_arithmetic("M=M|D")
-
         # unary operations
         elif op == "neg":
-            pass
+            return cls._unary_arithmetic("M=-M")
         elif op == "not":
-            pass
+            return cls._unary_arithmetic("M=!M")
 
         return "// %s NOT IMPLEMENTED\n" % (op)
 
     def write_arithmetic(self, op: str):
         comment = f"// {op}\n"
-        code = self._arithmetic(op)
+        code = self._arithmetic(op, self.count)
         self.f.write(comment + code)
+        self.count += 1
 
     
     def close(self):
