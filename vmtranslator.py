@@ -93,19 +93,6 @@ class CodeWriter(object):
     BINARY_OPERATORS = {
         "add", "sub", "eq", "gt", "lt", "and", "or"
     }
-    # D...arg1 M...arg2
-    BINARY_OP_TEMPLATE = """
-@SP
-M=M-1
-A=M
-D=M
-@SP
-M=M-1
-A=M
-{}
-@SP
-M=M+1
-"""
 
     SEGMENT_POINTERS  = {
         "local": "LCL",
@@ -200,6 +187,38 @@ M=M+1
 """
 
     @classmethod
+    def _this_or_that(cls, index: int) -> str:
+        ptr = "THIS" if index == 0 else "THAT" if index == 1 else None
+        if ptr is None:
+            raise RuntimeError(f"invalid index for pointer: {index}")
+        return ptr
+
+    @classmethod
+    def _push_pointer(cls, index: int) -> str:
+        ptr = cls._this_or_that(index)
+        return f"""
+@{ptr}
+D=M
+@SP
+A=M
+M=D
+@SP
+M=M+1
+"""
+
+    @classmethod
+    def _pop_pointer(cls, index: int) -> str:
+        ptr = cls._this_or_that(index)
+        return f"""
+@SP
+M=M-1
+A=M
+D=M
+@{ptr}
+M=D
+"""
+
+    @classmethod
     def _pushpop(cls, command: CommandType, segment: str, index: int):
         register = cls.SEGMENT_POINTERS.get(segment, None)
         if register:
@@ -215,7 +234,11 @@ M=M+1
         elif segment == "constant" and command == CommandType.PUSH:
             return cls._push_constant(index)
         # TODO static
-        # TODO pointer
+        elif segment == "pointer":
+            if command == CommandType.PUSH:
+                return cls._push_pointer(index)
+            elif command == CommandType.POP:
+                return cls._pop_pointer(index)
 
         return "// %s %s %d NOT IMPLEMENTED \n" % (command, segment, index)
 
@@ -226,8 +249,20 @@ M=M+1
 
     @classmethod
     def _binary_arithmetic(cls, *operations) -> str:
-        cmd = "\n".join(operations)
-        return cls.BINARY_OP_TEMPLATE.format(cmd)
+        ops = "\n".join(operations)
+        # D...arg1 M...arg2
+        return f"""
+@SP
+M=M-1
+A=M
+D=M
+@SP
+M=M-1
+A=M
+{ops}
+@SP
+M=M+1
+"""
 
     @classmethod
     def _arithmetic(cls, op: str) -> str:
