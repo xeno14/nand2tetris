@@ -103,6 +103,8 @@ class CodeWriter(object):
 
     TEMP_OFFSET = 5
 
+    STATIC_OFFSET = 16
+
     def __init__(self, f):
         self.f = f
     
@@ -219,26 +221,55 @@ M=D
 """
 
     @classmethod
-    def _pushpop(cls, command: CommandType, segment: str, index: int):
-        register = cls.SEGMENT_POINTERS.get(segment, None)
+    def _push_static(cls, namespace: str, index: int) -> str:
+        static = f"{namespace}.{index}"
+        return f"""
+@{static}
+D=M
+@SP
+A=M
+M=D
+@SP
+M=M+1
+"""
+
+    @classmethod
+    def _pop_static(cls, namespace: str, index: int) -> str:
+        static = f"{namespace}.{index}"
+        return f"""
+@SP
+M=M-1
+@SP
+A=M
+D=M
+@{static}
+M=D
+"""
+
+    def _pushpop(self, command: CommandType, segment: str, index: int):
+        register = self.SEGMENT_POINTERS.get(segment, None)
         if register:
             if command == CommandType.PUSH:
-                return cls._push(register, index)
+                return self._push(register, index)
             elif command == CommandType.POP:
-                return cls._pop(register, index)
+                return self._pop(register, index)
         elif segment == "temp":
             if command == CommandType.PUSH:
-                return cls._push_temp(index)
+                return self._push_temp(index)
             elif command == CommandType.POP:
-                return cls._pop_temp(index)
+                return self._pop_temp(index)
         elif segment == "constant" and command == CommandType.PUSH:
-            return cls._push_constant(index)
-        # TODO static
+            return self._push_constant(index)
+        elif segment == "static":
+            if command == CommandType.PUSH:
+                return self._push_static("Foo", index)
+            elif command == CommandType.POP:
+                return self._pop_static("Foo", index)
         elif segment == "pointer":
             if command == CommandType.PUSH:
-                return cls._push_pointer(index)
+                return self._push_pointer(index)
             elif command == CommandType.POP:
-                return cls._pop_pointer(index)
+                return self._pop_pointer(index)
 
         return "// %s %s %d NOT IMPLEMENTED \n" % (command, segment, index)
 
