@@ -81,6 +81,115 @@ class Parser:
         self.f.close()
 
 
+
+class CodeBuilder(object):
+
+    def __init__(self, count: int = 0):
+        self.lines = []
+        self.count = count
+    
+    def append(self, text: str):
+        self.lines.append(text)
+        if not text.startswith("//") and not text.startswith("(") and not text.strip() == "":
+            self.count += 1
+    
+    def comment(self, cmt: str):
+        self.append("//" + cmt)
+
+    def build(self) -> str:
+        return "\n".join(self.lines)
+
+    def inc(self, a: str):
+        """MEM[a]++
+        """
+        self.append("@"+a)
+        self.append("M=M+1")
+
+    def dec(self, a: str):
+        """MEM[a]--
+        """
+        self.append("@"+a)
+        self.append("M=M-1")
+    
+    def add_mi(self, a: str, i: int):
+        """add memory from immediate: MEM[a]=MEM[a] + i
+        """
+        self.append(f"@{a}")
+        self.append(f"D=M")
+        self.append(f"@{i}")
+        self.append(f"D=D+A")
+        self.append(f"@{a}")
+        self.append(f"M=D")
+    
+    def sub_mi(self, a: str, i: int):
+        """sum memory from immediate: D=MEM[a] - i
+        """
+        self.append(f"@{a}")
+        self.append(f"D=M")
+        self.append(f"@{i}")
+        self.append(f"D=D-A")
+        self.append(f"@{a}")
+        self.append(f"M=D")
+    
+    def mov_pp(self, l: str, r:str):
+        """pointer from pointer: *MEM[l]= *MEM[r]
+        """
+        self.append(f"@{r}")
+        self.append(f"A=M")
+        self.append(f"D=M")  # D=*MEM[r]
+        self.append(f"@{l}")
+        self.append(f"A=M")
+        self.append(f"M=D")
+    
+    def mov_pm(self, l: str, r: str):
+        """pointer from memory: *MEM[l] = MEM[r]
+        """
+        self.append(f"@{r}")
+        self.append(f"D=M")  # D=MEM[r]
+        self.append(f"@{l}")
+        self.append(f"A=M")
+        self.append(f"M=D")
+
+    def mov_mp(self, l: str, r: str):
+        """memory from pointer: MEM[l] = *MEM[r]
+        """
+        self.append(f"@{r}")
+        self.append(f"A=M")
+        self.append(f"D=M")  # D=*MEM[r]
+        self.append(f"@{l}")
+        self.append(f"M=D")
+    
+    def mov_pi(self, l: str, i: int):
+        """pointer from immediate: *MEM[l] = i
+        """
+        self.append(f"@{i}")
+        self.append(f"D=A")
+        self.append(f"@{l}")
+        self.append(f"A=M")
+        self.append(f"M=D")
+
+    def mov_rp(self, l: str, r: str):
+        """register = *MEM[r]
+        """
+        if l not in ["D", "A"]:
+            raise ValueError(f"Invalid register {l}")
+        self.append(f"@{r}")
+        self.append(f"A=M")
+        self.append(f"{l}=M")
+    
+    def mov_pr(self, l: str, r: str):
+        """*MEM[r] = register
+        """
+        if r not in ["D", "A"]:
+            raise ValueError(f"Invalid register {r}")
+        if r == "A":
+            # move value of A as it will be replaced later
+            self.append(f"D=A")
+        self.append(f"@{l}")
+        self.append(f"A=M")
+        self.append(f"M=D")
+
+
 class CodeWriter(object):
 
     # predefined registers
@@ -108,84 +217,59 @@ class CodeWriter(object):
         self.count = 0
     
     @classmethod
-    def _push(cls, register: str, index: int) -> str:
+    def _push(cls, segment: str, index: int) -> str:
         """for local, argument, this, that
+        addr = segmentPointer + i; *SP = *addr; SP++
         """
-        return f"""
-@{register}
-D=M
-@{index}
-A=D+A
-D=M
-@SP
-A=M
-M=D
-@SP
-M=M+1
-"""
+        builder = CodeBuilder()
+        builder.add_mi(segment, index)  # addr: MEM[segment] += index
+        builder.mov_pp("SP", segment)   # *SP = *addr
+        builder.inc("SP")               # SP++
+        builder.sub_mi(segment, index)  # MEM[addr] -= index
+        return builder.build()
 
     @classmethod
-    def _pop(cls, register: str, index: int) -> str:
+    def _pop(cls, segment: str, index: int) -> str:
         """for local, argument, this, that
+        addr = segmentPointer + i;  SP--; *addr = *SP
         """
-        return f"""
-@{register}
-D=M
-@{index}
-D=D+A
-@{register}
-M=D
-@SP
-M=M-1
-A=M
-D=M
-@{register}
-A=M
-M=D
-@{register}
-D=M
-@{index}
-D=D-A
-@{register}
-M=D
-"""
+        builder = CodeBuilder()
+        builder.add_mi(segment, index)  # addr: MEM[segment] += index
+        builder.dec("SP")
+        builder.mov_pp(segment, "SP")   # *SP = *addr
+        builder.sub_mi(segment, index)  # MEM[addr] -= index
+        return builder.build()
 
     @classmethod
     def _push_temp(cls, index: int) -> str:
+        """addr = 5+i, *SP=*addr, SP++
+        """
         address = cls.TEMP_OFFSET + index
-        return f"""
-@{address}
-D=M
-@SP
-A=M
-M=D
-@SP
-M=M+1
-"""
+
+        builder = CodeBuilder()
+        builder.mov_pm("SP", address)
+        builder.inc("SP")
+        return builder.build()
 
     @classmethod
     def _pop_temp(cls, index: int) -> str:
+        """addr = 5+i, *addr=*SP, SP--
+        """
         address = cls.TEMP_OFFSET + index
-        return f"""
-@SP
-M=M-1
-A=M
-D=M
-@{address}
-M=D
-"""
+
+        builder = CodeBuilder()
+        builder.dec("SP")
+        builder.mov_mp(address, "SP")
+        return builder.build()
 
     @classmethod
     def _push_constant(cls, value: int) -> str:
-        return f"""
-@{value}
-D=A
-@SP
-A=M
-M=D
-@SP
-M=M+1
-"""
+        """*SP = i; SP++
+        """
+        builder = CodeBuilder()
+        builder.mov_pi("SP", value)
+        builder.inc("SP")
+        return builder.build()
 
     @classmethod
     def _this_or_that(cls, index: int) -> str:
@@ -278,7 +362,23 @@ M=D
         self.f.write(comment + code + "\n")
 
     @classmethod
-    def _binary_arithmetic(cls, *operations) -> str:
+    def _pop2(cls, builder: CodeBuilder) -> CodeBuilder:
+        builder.dec("SP")
+        builder.mov_rp("D", "SP")
+        builder.dec("SP")
+        builder.mov_rp("A", "SP")
+        return builder
+    
+    @classmethod
+    def _pushd(cls, builder: CodeBuilder) -> CodeBuilder:
+        builder.mov_pr("SP", "D")
+        builder.inc("SP")
+        return builder
+
+    @classmethod
+    def _binary_arithmetic(cls, *operations) -> CodeBuilder:
+        """D=arg1, A=arg2 
+        """
         ops = "\n".join(operations)
         # D...arg1 M...arg2
         return f"""
@@ -309,6 +409,7 @@ M=M+1
 
     @classmethod
     def _arithmetic(cls, op: str, count: int) -> str:
+        builder = CodeBuilder(count)
         if op in cls.BINARY_OPERATORS:
             # D...arg1, M...arg2
             if op == "add":
