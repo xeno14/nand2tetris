@@ -90,8 +90,8 @@ class CodeBuilder(object):
     
     def append(self, text: str):
         self.lines.append(text)
-        if not text.startswith("//") and not text.startswith("(") and not text.strip() == "":
-            self.count += 1
+        # if not text.startswith("//") and not text.startswith("(") and not text.strip() == "":
+        #     self.count += 1
     
     def comment(self, cmt: str):
         self.append("//" + cmt)
@@ -364,25 +364,46 @@ class CodeWriter(object):
         self.f.write(comment + code + "\n")
 
     @classmethod
-    def _pop2(cls, builder: CodeBuilder) -> CodeBuilder:
-        """A=arg1, D=arg2
+    def _simple_binary_arithmetic(cls, expr: str) -> str:
+        """apply simple binary arithmetic that ALU can execute.
+
+        A = arg1, D = arg2
         """
+        builder = CodeBuilder()
+        # pop twice 
         builder.dec("SP")
         builder.mov_rp("D", "SP")
         builder.dec("SP")
         builder.mov_rp("A", "SP")
-        return builder
-    
-    @classmethod
-    def _pushd(cls, builder: CodeBuilder) -> CodeBuilder:
+        # apply expr
+        builder.append(expr)
+        # push the result
         builder.mov_pr("SP", "D")
         builder.inc("SP")
-        return builder
+        return builder.build()
 
+    @classmethod
+    def _simple_unary_arithmetic(cls, expr: str) -> str:
+        """apply simple unary arithmetic that ALU can execute.
+
+        D = arg1
+        """
+        builder = CodeBuilder()
+        # pop
+        builder.dec("SP")
+        builder.mov_rp("D", "SP")
+        # apply expr
+        builder.append(expr)
+        # push
+        builder.mov_pr("SP", "D")
+        builder.inc("SP")
+        return builder.build()
+    
     @classmethod
     def _binary_arithmetic(cls, *operations) -> CodeBuilder:
         """D=arg1, A=arg2 
         """
+        # TODO remove me later
         ops = "\n".join(operations)
         # D...arg1 M...arg2
         return f"""
@@ -414,20 +435,22 @@ M=M+1
     @classmethod
     def _arithmetic(cls, op: str, count: int) -> str:
         builder = CodeBuilder(count)
-        if op in cls.BINARY_OPERATORS:
+        # unary operations
+        if op == "neg":
+            return cls._simple_binary_arithmetic("D=-D")
+        elif op == "not":
+            return cls._simple_binary_arithmetic("D=!D")
+        # binary operations
+        elif op in cls.BINARY_OPERATORS:
             # A...arg1, D...arg2
             if op == "add":
-                cls._pop2(builder)
-                builder.append("D=D+A")
-                builder.mov_pr("SP", "D")
-                builder.inc("SP")
-                return builder.build()
+                return cls._simple_binary_arithmetic("D=A+D")
             elif op == "sub":
-                cls._pop2(builder)
-                builder.append("D=A-D")
-                builder.mov_pr("SP", "D")
-                builder.inc("SP")
-                return builder.build()
+                return cls._simple_binary_arithmetic("D=A-D")
+            elif op == "and":
+                return cls._simple_binary_arithmetic("D=A&D")
+            elif op == "or":
+                return cls._simple_binary_arithmetic("D=A|D")
             elif op == "eq":
                 return cls._binary_arithmetic(
                     f"""
@@ -476,15 +499,6 @@ D=0
 A=M
 M=D
 """.strip())
-            elif op == "and":
-                return cls._binary_arithmetic("M=M&D")
-            elif op == "or":
-                return cls._binary_arithmetic("M=M|D")
-        # unary operations
-        elif op == "neg":
-            return cls._unary_arithmetic("M=-M")
-        elif op == "not":
-            return cls._unary_arithmetic("M=!M")
 
         return "// %s NOT IMPLEMENTED\n" % (op)
 
