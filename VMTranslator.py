@@ -2,6 +2,7 @@ import io
 import enum
 import collections
 from typing import *
+import os.path
 
 
 class CommandType(enum.Enum):
@@ -239,6 +240,10 @@ class CodeWriter(object):
     def __init__(self, f):
         self.f = f
         self.count = 0
+        self.namespace: str = ""
+    
+    def set_namespace(self, namespace: str):
+        self.namespace = namespace
     
     @classmethod
     def _push(cls, segment: str, index: int) -> str:
@@ -358,9 +363,9 @@ class CodeWriter(object):
             return self._push_constant(index)
         elif segment == "static":
             if command == CommandType.PUSH:
-                return self._push_static("Foo", index)
+                return self._push_static(self.namespace, index)
             elif command == CommandType.POP:
-                return self._pop_static("Foo", index)
+                return self._pop_static(self.namespace, index)
         elif segment == "pointer":
             if command == CommandType.PUSH:
                 return self._push_pointer(index)
@@ -411,7 +416,7 @@ class CodeWriter(object):
         return builder.build()
     
     @classmethod
-    def _logical_binary_arithmetic(cls, cond: str, count: int) -> str:
+    def _logical_binary_arithmetic(cls, cond: str, prefix: str) -> str:
         """if arg1-arg2 satisfies the given condition, push -1 (true) otherwise 0 (false)
         """
         cond = cond.upper()
@@ -421,7 +426,7 @@ class CodeWriter(object):
             "LT": "GE",
         }
         not_cond = NOT_COND[cond]
-        prefix = f"{count}.{cond}"
+        prefix = prefix + "." + cond
         else_label = f"{prefix}.ELSE"
         end_label = f"{prefix}.END"
 
@@ -447,7 +452,7 @@ class CodeWriter(object):
         return builder.build()
 
     @classmethod
-    def _arithmetic(cls, op: str, count: int) -> str:
+    def _arithmetic(cls, op: str, prefix) -> str:
         # unary operations
         if op == "neg":
             return cls._simple_unary_arithmetic("D=-D")
@@ -465,17 +470,18 @@ class CodeWriter(object):
             elif op == "or":
                 return cls._simple_binary_arithmetic("D=A|D")
             elif op == "eq":
-                return cls._logical_binary_arithmetic("EQ", count)
+                return cls._logical_binary_arithmetic("EQ", prefix)
             elif op == "gt":
-                return cls._logical_binary_arithmetic("GT", count)
+                return cls._logical_binary_arithmetic("GT", prefix)
             elif op == "lt":
-                return cls._logical_binary_arithmetic("LT", count)
+                return cls._logical_binary_arithmetic("LT", prefix)
 
         return "// %s NOT IMPLEMENTED\n" % (op)
 
     def write_arithmetic(self, op: str):
         comment = f"// {op}\n"
-        code = self._arithmetic(op, self.count)
+        prefix = f"{self.namespace}.{self.count}"
+        code = self._arithmetic(op, prefix)
         self.f.write(comment + code)
         self.count += 1
 
@@ -483,37 +489,63 @@ class CodeWriter(object):
         self.f.close()
 
 
-def main():
-    import sys
+class Main:
 
-    # input and parser
-    input_filename = sys.argv[1]
-    input_file = open(input_filename, "r")
-    parser = Parser(input_file)
+    def __init__(self, input_path: str):
+        import glob
 
-    # output and writer
-    output_filename = input_filename.replace(".vm", ".asm")
-    output_file = open(output_filename, "w")
-    writer = CodeWriter(output_file)
-
-    print("Input: " + input_filename)
-    print("Output: " + output_filename)
-    
-    # main loop
-    while True:
-        parser.advance()
-        if not parser.has_more_commands():
-            break
-        cmd = parser.get_current_command()
-        # print(cmd)
-        if cmd.command == CommandType.PUSH or cmd.command == CommandType.POP:
-            writer.write_pushpop(cmd.command, cmd.arg1, cmd.arg2)
-        elif cmd.command == CommandType.ARITHMETIC:
-            writer.write_arithmetic(cmd.op)
+        # input
+        self.input_path = input_path
+        if input_path.endswith(".vm"):
+            self.input_files = [input_path]
+            self.is_directory = False
         else:
-            raise NotImplementedError
-    writer.close()
+            self.input_files = list(glob.glob(os.path.join(input_path, "*.vm")))
+            self.is_directory = True
+
+    @classmethod
+    def get_namespace(cls, input_filename: str) -> str:
+        basename = os.path.basename(input_filename)
+        namespace = os.path.splitext(basename)[0]
+        return namespace
+    
+    def translate(self):
+        if self.is_directory:
+            output_filename = self.input_path.rstrip(os.path.sep) + ".asm"
+        else:
+            output_filename = self.input_path.replace(".vm", ".asm")
+        output_file = open(output_filename, "w")
+        writer = CodeWriter(output_file)
+
+        for input_filename in self.input_files:
+            input_file = open(input_filename, "r")
+            parser = Parser(input_file)
+            namespace = self.get_namespace(input_filename)
+            writer.set_namespace(namespace)
+
+            print("Input: " + input_filename)
+            
+            # main loop
+            while True:
+                parser.advance()
+                if not parser.has_more_commands():
+                    break
+                cmd = parser.get_current_command()
+                if cmd.command == CommandType.PUSH or cmd.command == CommandType.POP:
+                    writer.write_pushpop(cmd.command, cmd.arg1, cmd.arg2)
+                elif cmd.command == CommandType.ARITHMETIC:
+                    writer.write_arithmetic(cmd.op)
+                else:
+                    raise NotImplementedError
+        writer.close()
+        print("Output: " + output_filename)
+    
+    @staticmethod
+    def main():
+        import sys
+        this = Main(sys.argv[1])
+        this.translate()
 
 
 if __name__ == "__main__":
-    main()
+    Main.main()
