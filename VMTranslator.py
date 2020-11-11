@@ -500,6 +500,8 @@ class CodeWriter(object):
         return f"{self.namespace}.{label}"
     
     def write_label(self, label: str):
+        """label
+        """
         comment = f"// label {label}\n"
         label = self._get_label(label)
         builder = CodeBuilder()
@@ -509,6 +511,8 @@ class CodeWriter(object):
         self.count += 1
     
     def write_if(self, label: str):
+        """conditional jump
+        """
         comment = f"// goto-if {label}\n"
         label = self._get_label(label)
         builder = CodeBuilder()
@@ -516,6 +520,17 @@ class CodeWriter(object):
         builder.dec("SP")
         builder.mov_rp("D", "SP")
         builder.goto_if("D", "NE", label)
+        code = builder.build()
+        self.f.write(comment + code)
+        self.count += 1
+    
+    def write_goto(self, label: str):
+        """unconditional jump
+        """
+        comment = f"// goto {label}\n"
+        label = self._get_label(label)
+        builder = CodeBuilder()
+        builder.goto(label)
         code = builder.build()
         self.f.write(comment + code)
         self.count += 1
@@ -574,7 +589,8 @@ class Main:
                     writer.write_label(cmd.arg1)
                 elif cmd.command == CommandType.IF:
                     writer.write_if(cmd.arg1)
-                # TODO goto (Fibonacci)
+                elif cmd.command == CommandType.GOTO:
+                    writer.write_goto(cmd.arg1)
                 # TODO call, return
                 else:
                     raise NotImplementedError
