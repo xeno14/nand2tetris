@@ -47,6 +47,16 @@ class Command(collections.namedtuple("Command", ["command", "op", "arg1", "arg2"
         elif op == "if-goto":
             command = CommandType.IF
             arg1 = pieces[1]
+        elif op == "call":
+            command = CommandType.CALL
+            arg1 = pieces[1]
+            arg2 = int(pieces[2])
+        elif op == "function":
+            command = CommandType.FUNCTION
+            arg1 = pieces[1]
+            arg2 = int(pieces[2])
+        elif op == "return":
+            command = CommandType.RETURN
         else:
             raise NotImplementedError(op)
         return Command(command, op, arg1, arg2)
@@ -110,7 +120,7 @@ class CodeBuilder(object):
         self.append("//" + cmt)
 
     def build(self) -> str:
-        return "\n".join(self.lines)
+        return "\n".join(self.lines) + "\n"
 
     def inc(self, a: str):
         """MEM[a]++
@@ -215,6 +225,14 @@ class CodeBuilder(object):
         self.append(f"@{r}")
         self.append(f"M={l}")
     
+    def mov_mm(self, l: str, r: str):
+        """MEM[l] = MEM[r]
+        """
+        self.append(f"@{r}")
+        self.append(f"D=M")
+        self.append(f"@{l}")
+        self.append(f"M=D")
+    
     def label(self, label: str):
         """set a label
         """
@@ -224,6 +242,13 @@ class CodeBuilder(object):
         """unconditional jump to a label
         """
         self.append(f"@{label}")
+        self.append("0;JMP")
+
+    def goto_m(self, addr: str):
+        """unconditional jump to a value in memory
+        """
+        self.append(f"@{addr}")
+        self.append("A=M")
         self.append("0;JMP")
 
     def goto_if(self, register: str, cond: str, label: str):
@@ -505,14 +530,16 @@ class CodeWriter(object):
         self.f.write(comment + code)
         self.count += 1
     
-    def _get_label(self, label: str) -> str:
+    def _get_prefixed_label(self, label: str) -> str:
+        """returns prefixed label to make it unique
+        """
         return f"{self.namespace}.{label}"
     
     def write_label(self, label: str):
         """label
         """
         comment = f"// label {label}\n"
-        label = self._get_label(label)
+        label = self._get_prefixed_label(label)
         builder = CodeBuilder()
         builder.label(label)
         code = builder.build()
@@ -523,7 +550,7 @@ class CodeWriter(object):
         """conditional jump
         """
         comment = f"// goto-if {label}\n"
-        label = self._get_label(label)
+        label = self._get_prefixed_label(label)
         builder = CodeBuilder()
         # pop
         builder.dec("SP")
@@ -536,14 +563,59 @@ class CodeWriter(object):
     def write_goto(self, label: str):
         """unconditional jump
         """
-        comment = f"// goto {label}\n"
-        label = self._get_label(label)
+        label = self._get_prefixed_label(label)
         builder = CodeBuilder()
+        builder.comment(f"goto {label}")
         builder.goto(label)
         code = builder.build()
-        self.f.write(comment + code)
+        self.f.write(code)
         self.count += 1
     
+    def write_functions(self, function: str, nvars: int):
+        builder = CodeBuilder()
+        builder.comment(f"function {function} {nvars}")
+        # declare label
+        builder.label(function)
+        # allocate local variables onto the stack
+        for _ in range(nvars):
+            builder.mov_pi("SP", 0)
+            builder.inc("SP")
+        code = builder.build()
+        self.f.write(code)
+    
+    def write_return(self):
+        builder = CodeBuilder()
+        builder.comment("return")
+
+        builder.mov_mm("endFrame", "LCL")
+        # return address
+        builder.mov_mm("retAddr", "LCL")
+        builder.sub_mi("retAddr", 5)
+        # *ARG = pop()
+        # set *ARG to return value
+        builder.dec("SP")
+        builder.mov_pp("ARG", "SP")
+        # SP = ARG+1
+        builder.mov_mm("SP", "ARG")
+        builder.add_mi("SP", 1)
+        # restore THAT = *(LCL-1)
+        builder.sub_mi("endFrame", 1)
+        builder.mov_mp("THAT", "endFrame")
+        # restore THIS = *(LCL-2)
+        builder.sub_mi("endFrame", 1)
+        builder.mov_mp("THIS", "endFrame")
+        # restore ARG = *(LCL-3)
+        builder.sub_mi("endFrame", 1)
+        builder.mov_mp("ARG", "endFrame")
+        # restore LCL  = *(LCL-4)
+        builder.sub_mi("endFrame", 1)
+        builder.mov_mp("LCL", "endFrame")
+        # goto retAddr = *(LCL-5)
+        builder.goto_m("retAddr")
+
+        code = builder.build()
+        self.f.write(code)
+
     def close(self):
         self.f.close()
 
@@ -600,7 +672,11 @@ class Main:
                     writer.write_if(cmd.arg1)
                 elif cmd.command == CommandType.GOTO:
                     writer.write_goto(cmd.arg1)
-                # TODO call, return
+                elif cmd.command == CommandType.FUNCTION:
+                    writer.write_functions(cmd.arg1, cmd.arg2)
+                elif cmd.command == CommandType.RETURN:
+                    writer.write_return()
+                # TODO call,
                 else:
                     raise NotImplementedError
         writer.close()
