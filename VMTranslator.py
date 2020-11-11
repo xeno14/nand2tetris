@@ -188,6 +188,14 @@ class CodeBuilder(object):
         self.append(f"@{l}")
         self.append(f"M=D")
     
+    def mov_mi(self, l: str, i: int):
+        """memory from immediate: MEM[l] = i
+        """
+        self.append(f"@{i}")
+        self.append("D=A")
+        self.append(f"@{l}")
+        self.append("M=D")
+    
     def mov_pi(self, l: str, i: int):
         """pointer from immediate: *MEM[l] = i
         """
@@ -649,6 +657,13 @@ class CodeWriter(object):
         code = builder.build()
         self.f.write(code)
         self.count += 1
+    
+    def write_init(self):
+        builder = CodeBuilder()
+        builder.mov_mi("SP", 256)
+        code = builder.build()
+        self.f.write(code)
+        self.write_call("Sys.init", 0)
 
     def close(self):
         self.f.close()
@@ -682,6 +697,9 @@ class Main:
             output_filename = self.input_path.replace(".vm", ".asm")
         output_file = open(output_filename, "w")
         writer = CodeWriter(output_file)
+
+        if self.is_directory:
+            writer.write_init()
 
         for input_filename in self.input_files:
             input_file = open(input_filename, "r")
