@@ -144,8 +144,7 @@ class CodeBuilder(object):
     def mov_pm(self, l: str, r: str):
         """pointer from memory: *MEM[l] = MEM[r]
         """
-        self.append(f"@{r}")
-        self.append(f"D=M")  # D=MEM[r]
+        self.mov_rm("D", r)
         self.append(f"@{l}")
         self.append(f"A=M")
         self.append(f"M=D")
@@ -153,9 +152,7 @@ class CodeBuilder(object):
     def mov_mp(self, l: str, r: str):
         """memory from pointer: MEM[l] = *MEM[r]
         """
-        self.append(f"@{r}")
-        self.append(f"A=M")
-        self.append(f"D=M")  # D=*MEM[r]
+        self.mov_rp("D", r)
         self.append(f"@{l}")
         self.append(f"M=D")
     
@@ -189,6 +186,22 @@ class CodeBuilder(object):
         self.append(f"A=M")
         self.append(f"M=D")
 
+    def mov_rm(self, l: str, r: str):
+        """register = MEM[r]
+        """
+        if l not in ["D", "A"]:
+            raise ValueError(f"Invalid register {l}")
+        self.append(f"@{r}")
+        self.append(f"{l}=M")
+
+    def mov_mr(self, l: str, r: str):
+        """MEM[r] = register
+        """
+        if r not in ["D", "A"]:
+            raise ValueError(f"Invalid register {r}")
+        self.append(f"@{r}")
+        self.append(f"M={l}")
+    
 
 class CodeWriter(object):
 
@@ -300,32 +313,23 @@ class CodeWriter(object):
         builder.mov_mp(addr, "SP")
         return builder.build()
 
-
     @classmethod
     def _push_static(cls, namespace: str, index: int) -> str:
         static = f"{namespace}.{index}"
-        return f"""
-@{static}
-D=M
-@SP
-A=M
-M=D
-@SP
-M=M+1
-"""
+
+        builder = CodeBuilder()
+        builder.mov_pm("SP", static)
+        builder.inc("SP")
+        return builder.build()
 
     @classmethod
     def _pop_static(cls, namespace: str, index: int) -> str:
         static = f"{namespace}.{index}"
-        return f"""
-@SP
-M=M-1
-@SP
-A=M
-D=M
-@{static}
-M=D
-"""
+
+        builder = CodeBuilder()
+        builder.dec("SP")
+        builder.mov_mp(static, "SP")
+        return builder.build()
 
     def _pushpop(self, command: CommandType, segment: str, index: int):
         register = self.SEGMENT_POINTERS.get(segment, None)
