@@ -280,28 +280,26 @@ class CodeWriter(object):
 
     @classmethod
     def _push_pointer(cls, index: int) -> str:
-        ptr = cls._this_or_that(index)
-        return f"""
-@{ptr}
-D=M
-@SP
-A=M
-M=D
-@SP
-M=M+1
-"""
+        """*SP = THIS/THAT, SP++
+        """
+        addr = cls._this_or_that(index)
+        
+        builder = CodeBuilder()
+        builder.mov_pm("SP", addr)
+        builder.inc("SP")
+        return builder.build()
 
     @classmethod
     def _pop_pointer(cls, index: int) -> str:
-        ptr = cls._this_or_that(index)
-        return f"""
-@SP
-M=M-1
-A=M
-D=M
-@{ptr}
-M=D
-"""
+        """SP--, THIS/THAT = *SP
+        """
+        addr = cls._this_or_that(index)
+        
+        builder = CodeBuilder()
+        builder.dec("SP")
+        builder.mov_mp(addr, "SP")
+        return builder.build()
+
 
     @classmethod
     def _push_static(cls, namespace: str, index: int) -> str:
