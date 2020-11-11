@@ -95,15 +95,16 @@ class Parser:
 
 
 class CodeBuilder(object):
+    """Builder class that allows to build assembly code via human-friendly interface.
+    """
 
-    def __init__(self, count: int = 0):
+    def __init__(self):
         self.lines = []
-        self.count = count
     
     def append(self, text: str):
+        """append a line of assembly code
+        """
         self.lines.append(text)
-        # if not text.startswith("//") and not text.startswith("(") and not text.strip() == "":
-        #     self.count += 1
     
     def comment(self, cmt: str):
         self.append("//" + cmt)
@@ -215,13 +216,21 @@ class CodeBuilder(object):
         self.append(f"M={l}")
     
     def label(self, label: str):
+        """set a label
+        """
         self.append(f"({label})")
 
     def goto(self, label: str):
+        """unconditional jump to a label
+        """
         self.append(f"@{label}")
         self.append("0;JMP")
 
     def goto_if(self, register: str, cond: str, label: str):
+        """conditional jump to a label
+
+        cond = EQ, NE, LT, GT, LE, GE
+        """
         self.append(f"@{label}")
         self.append(f"{register};J{cond.upper()}")
 
