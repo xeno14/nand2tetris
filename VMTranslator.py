@@ -202,6 +202,17 @@ class CodeBuilder(object):
         self.append(f"@{r}")
         self.append(f"M={l}")
     
+    def label(self, label: str):
+        self.append(f"({label})")
+
+    def goto(self, label: str):
+        self.append(f"@{label}")
+        self.append("0;JMP")
+
+    def goto_if(self, register: str, cond: str, label: str):
+        self.append(f"@{label}")
+        self.append(f"{register};J{cond.upper()}")
+
 
 class CodeWriter(object):
 
@@ -400,46 +411,48 @@ class CodeWriter(object):
         return builder.build()
     
     @classmethod
-    def _binary_arithmetic(cls, *operations) -> CodeBuilder:
-        """D=arg1, A=arg2 
+    def _logical_binary_arithmetic(cls, cond: str, count: int) -> str:
+        """if arg1-arg2 satisfies the given condition, push -1 (true) otherwise 0 (false)
         """
-        # TODO remove me later
-        ops = "\n".join(operations)
-        # D...arg1 M...arg2
-        return f"""
-@SP
-M=M-1
-A=M
-D=M
-@SP
-M=M-1
-A=M
-{ops}
-@SP
-M=M+1
-"""
+        cond = cond.upper()
+        NOT_COND = {
+            "GT": "LE",
+            "EQ": "NE",
+            "LT": "GE",
+        }
+        not_cond = NOT_COND[cond]
+        prefix = f"{count}.{cond}"
+        else_label = f"{prefix}.ELSE"
+        end_label = f"{prefix}.END"
 
-    @classmethod
-    def _unary_arithmetic(cls, *operations) -> str:
-        ops = "\n".join(operations)
-        # M ... arg
-        return f"""
-@SP
-M=M-1
-A=M
-{ops}
-@SP
-M=M+1
-"""
+        builder = CodeBuilder()
+        # pop twice 
+        builder.dec("SP")
+        builder.mov_rp("D", "SP")
+        builder.dec("SP")
+        builder.mov_rp("A", "SP")
+        # jump to else-statement
+        builder.append("D=A-D")
+        builder.goto_if("D", not_cond, f"{else_label}")
+        # start if-statement
+        builder.append("D=-1")  # true
+        builder.goto(end_label)
+        # start else-statement
+        builder.label(else_label)
+        builder.append("D=0")   # false
+        # push the result
+        builder.label(end_label)
+        builder.mov_pr("SP", "D")
+        builder.inc("SP")
+        return builder.build()
 
     @classmethod
     def _arithmetic(cls, op: str, count: int) -> str:
-        builder = CodeBuilder(count)
         # unary operations
         if op == "neg":
-            return cls._simple_binary_arithmetic("D=-D")
+            return cls._simple_unary_arithmetic("D=-D")
         elif op == "not":
-            return cls._simple_binary_arithmetic("D=!D")
+            return cls._simple_unary_arithmetic("D=!D")
         # binary operations
         elif op in cls.BINARY_OPERATORS:
             # A...arg1, D...arg2
@@ -452,53 +465,11 @@ M=M+1
             elif op == "or":
                 return cls._simple_binary_arithmetic("D=A|D")
             elif op == "eq":
-                return cls._binary_arithmetic(
-                    f"""
-D=M-D
-@{count}.EQ.ELSE
-D;JNE
-D=-1
-@{count}.EQ.END
-0;JMP
-({count}.EQ.ELSE)
-D=0
-({count}.EQ.END)
-@SP
-A=M
-M=D
-""".strip())
+                return cls._logical_binary_arithmetic("EQ", count)
             elif op == "gt":
-                return cls._binary_arithmetic(
-                    f"""
-D=M-D
-@{count}.GT.ELSE
-D;JLE
-D=-1
-@{count}.GT.END
-0;JMP
-({count}.GT.ELSE)
-D=0
-({count}.GT.END)
-@SP
-A=M
-M=D
-""".strip())
+                return cls._logical_binary_arithmetic("GT", count)
             elif op == "lt":
-                return cls._binary_arithmetic(
-                    f"""
-D=M-D
-@{count}.LT.ELSE
-D;JGE
-D=-1
-@{count}.LT.END
-0;JMP
-({count}.LT.ELSE)
-D=0
-({count}.LT.END)
-@SP
-A=M
-M=D
-""".strip())
+                return cls._logical_binary_arithmetic("LT", count)
 
         return "// %s NOT IMPLEMENTED\n" % (op)
 
@@ -508,7 +479,6 @@ M=D
         self.f.write(comment + code)
         self.count += 1
 
-    
     def close(self):
         self.f.close()
 
