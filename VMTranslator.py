@@ -25,7 +25,16 @@ class Command(collections.namedtuple("Command", ["command", "op", "arg1", "arg2"
     }
 
     @classmethod
+    def sanitize_piece(cls, piece: str) -> str:
+        if "//" in piece:
+            piece = piece.split("//")[0]
+        return piece.strip()
+
+    @classmethod
     def build(cls, pieces: List[str]) -> "Command":
+        # remove whitespace and comments
+        pieces = [cls.sanitize_piece(p) for p in pieces]
+
         op = pieces[0]
         arg1, arg2 = None, None
         if op == "push":
@@ -582,15 +591,21 @@ class CodeWriter(object):
             builder.inc("SP")
         code = builder.build()
         self.f.write(code)
+        self.count += 1
     
     def write_return(self):
         builder = CodeBuilder()
         builder.comment("return")
 
-        builder.mov_mm("endFrame", "LCL")
+        # TODO use R13-R15 for temporal values
+        FRAME = "13"
+        RETADDR = "14"
+
+        builder.mov_mm(FRAME, "LCL")
         # return address
-        builder.mov_mm("retAddr", "LCL")
-        builder.sub_mi("retAddr", 5)
+        builder.sub_mi(FRAME, 5)
+        builder.mov_mp(RETADDR, FRAME)
+        builder.add_mi(FRAME, 5)
         # *ARG = pop()
         # set *ARG to return value
         builder.dec("SP")
@@ -598,23 +613,42 @@ class CodeWriter(object):
         # SP = ARG+1
         builder.mov_mm("SP", "ARG")
         builder.add_mi("SP", 1)
-        # restore THAT = *(LCL-1)
-        builder.sub_mi("endFrame", 1)
-        builder.mov_mp("THAT", "endFrame")
-        # restore THIS = *(LCL-2)
-        builder.sub_mi("endFrame", 1)
-        builder.mov_mp("THIS", "endFrame")
-        # restore ARG = *(LCL-3)
-        builder.sub_mi("endFrame", 1)
-        builder.mov_mp("ARG", "endFrame")
-        # restore LCL  = *(LCL-4)
-        builder.sub_mi("endFrame", 1)
-        builder.mov_mp("LCL", "endFrame")
+        # restore stack frame
+        for segment in ["THAT", "THIS", "ARG", "LCL"]:
+            builder.sub_mi(FRAME, 1)
+            builder.mov_mp(segment, FRAME)
         # goto retAddr = *(LCL-5)
-        builder.goto_m("retAddr")
+        builder.goto_m(RETADDR)
 
         code = builder.build()
         self.f.write(code)
+        self.count += 1
+    
+    def write_call(self, function: str, nargs: int):
+        return_address = f"{self.namespace}.{function}.{self.count}"
+
+        builder = CodeBuilder()
+        builder.comment(f"call {function} {nargs}")
+        # push returnAddress
+        builder.mov_pi("SP", return_address)
+        builder.inc("SP")
+        # save current stack frame
+        for segment in ["LCL", "ARG", "THIS", "THAT"]:
+            builder.mov_pm("SP", segment)
+            builder.inc("SP")
+        # ARG = SP-5-nargs
+        builder.mov_mm("ARG", "SP")
+        builder.sub_mi("ARG", 5+nargs)
+        # LCL = SP
+        builder.mov_mm("LCL", "SP")
+        # goto function
+        builder.goto(function)
+        # declare return address
+        builder.label(return_address)
+
+        code = builder.build()
+        self.f.write(code)
+        self.count += 1
 
     def close(self):
         self.f.close()
@@ -642,7 +676,8 @@ class Main:
     
     def translate(self):
         if self.is_directory:
-            output_filename = self.input_path.rstrip(os.path.sep) + ".asm"
+            basename = os.path.basename(self.input_path.rstrip(os.path.sep))
+            output_filename = os.path.join(self.input_path, basename + ".asm")
         else:
             output_filename = self.input_path.replace(".vm", ".asm")
         output_file = open(output_filename, "w")
@@ -676,7 +711,8 @@ class Main:
                     writer.write_functions(cmd.arg1, cmd.arg2)
                 elif cmd.command == CommandType.RETURN:
                     writer.write_return()
-                # TODO call,
+                elif cmd.command == CommandType.CALL:
+                    writer.write_call(cmd.arg1, cmd.arg2)
                 else:
                     raise NotImplementedError
         writer.close()
