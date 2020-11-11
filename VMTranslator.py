@@ -38,6 +38,17 @@ class Command(collections.namedtuple("Command", ["command", "op", "arg1", "arg2"
             arg2 = int(pieces[2])
         elif op in cls.ARITHMETIC_COMMANDS:
             command = CommandType.ARITHMETIC
+        elif op == "label":
+            command = CommandType.LABEL
+            arg1 = pieces[1]
+        elif op == "goto":
+            command = CommandType.GOTO
+            arg1 = pieces[1]
+        elif op == "if-goto":
+            command = CommandType.IF
+            arg1 = pieces[1]
+        else:
+            raise NotImplementedError(op)
         return Command(command, op, arg1, arg2)
 
     def __str__(self):
@@ -484,7 +495,31 @@ class CodeWriter(object):
         code = self._arithmetic(op, prefix)
         self.f.write(comment + code)
         self.count += 1
-
+    
+    def _get_label(self, label: str) -> str:
+        return f"{self.namespace}.{label}"
+    
+    def write_label(self, label: str):
+        comment = f"// label {label}\n"
+        label = self._get_label(label)
+        builder = CodeBuilder()
+        builder.label(label)
+        code = builder.build()
+        self.f.write(comment + code)
+        self.count += 1
+    
+    def write_if(self, label: str):
+        comment = f"// goto-if {label}\n"
+        label = self._get_label(label)
+        builder = CodeBuilder()
+        # pop
+        builder.dec("SP")
+        builder.mov_rp("D", "SP")
+        builder.goto_if("D", "NE", label)
+        code = builder.build()
+        self.f.write(comment + code)
+        self.count += 1
+    
     def close(self):
         self.f.close()
 
@@ -535,6 +570,12 @@ class Main:
                     writer.write_pushpop(cmd.command, cmd.arg1, cmd.arg2)
                 elif cmd.command == CommandType.ARITHMETIC:
                     writer.write_arithmetic(cmd.op)
+                elif cmd.command == CommandType.LABEL:
+                    writer.write_label(cmd.arg1)
+                elif cmd.command == CommandType.IF:
+                    writer.write_if(cmd.arg1)
+                # TODO goto (Fibonacci)
+                # TODO call, return
                 else:
                     raise NotImplementedError
         writer.close()
