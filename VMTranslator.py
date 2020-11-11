@@ -365,6 +365,8 @@ class CodeWriter(object):
 
     @classmethod
     def _pop2(cls, builder: CodeBuilder) -> CodeBuilder:
+        """A=arg1, D=arg2
+        """
         builder.dec("SP")
         builder.mov_rp("D", "SP")
         builder.dec("SP")
@@ -413,11 +415,19 @@ M=M+1
     def _arithmetic(cls, op: str, count: int) -> str:
         builder = CodeBuilder(count)
         if op in cls.BINARY_OPERATORS:
-            # D...arg1, M...arg2
+            # A...arg1, D...arg2
             if op == "add":
-                return cls._binary_arithmetic("M=M+D")
+                cls._pop2(builder)
+                builder.append("D=D+A")
+                builder.mov_pr("SP", "D")
+                builder.inc("SP")
+                return builder.build()
             elif op == "sub":
-                return cls._binary_arithmetic("M=M-D")
+                cls._pop2(builder)
+                builder.append("D=A-D")
+                builder.mov_pr("SP", "D")
+                builder.inc("SP")
+                return builder.build()
             elif op == "eq":
                 return cls._binary_arithmetic(
                     f"""
