@@ -1,0 +1,228 @@
+class Lifegame {
+
+    field Matrix mtx, next;
+    field int rows, cols, size;
+    field int generation;
+
+    constructor Lifegame new(int rows_, int cols_) {
+        let rows = rows_;
+        let cols = cols_;
+        let size = rows * cols;
+        let mtx = Matrix.new(rows, cols);
+        let next = Matrix.new(rows, cols);
+        let generation = 0;
+
+        return this;
+    }
+
+    method void dispose() {
+        do mtx.dispose();
+        do next.dispose();
+        do Memory.deAlloc(this);
+        return;
+    }
+
+    method void init(int seed) {
+        // glider
+        // do mtx.set(0,1,1);
+        // do mtx.set(1,2,1);
+        // do mtx.set(2,0,1);
+        // do mtx.set(2,1,1);
+        // do mtx.set(2,2,1);
+
+        var Random random;
+        var int idx, rnd;
+        let random = Random.new(seed);
+        let seed = MathUtil.mod(seed, random.getM());
+        let idx = 0;
+        while (idx<size) {
+            let rnd = random.get();
+            // put a living cell by 1/3 probability
+            if (rnd < (random.getM()/3)) {
+                do mtx.setAt(idx, 1);
+            }
+            let idx = idx+1;
+        }
+        do random.dispose();
+        return;
+    }
+
+    // returns cell value at (i, j), if (i, j) is out of bounds, returns 0.
+    method int getCell(int i, int j) {
+        var int res;
+        var boolean row_ok, col_ok;
+
+        let res = 0;
+        let row_ok = ((i=0) | ((i>0) & (i<rows)));
+        let col_ok = ((j=0) | ((j>0) & (j<cols)));
+        if (row_ok & col_ok) {
+            let res = mtx.get(i, j);
+        }
+        return res;
+    }
+
+    // returns a number of living neighbors
+    method int getSumNeighbors(int i, int j) {
+        var int sum;
+
+        let sum = 0;
+        let sum = sum + getCell(i-1, j-1);
+        let sum = sum + getCell(i-1, j);
+        let sum = sum + getCell(i-1, j+1);
+
+        let sum = sum + getCell(i,   j-1); 
+        let sum = sum + getCell(i,   j+1);
+
+        let sum = sum + getCell(i+1, j-1);
+        let sum = sum + getCell(i+1, j);
+        let sum = sum + getCell(i+1, j+1);
+
+        return sum;
+    }
+
+    // go to the next generation
+    method void nextGeneration() {
+        var int idx, i, j, sum, me;
+        var Matrix tmp;
+
+        let idx = 0;
+        while(idx < size) {
+            let i = idx / cols;
+            let j = MathUtil.mod(idx, cols);
+            let me = getCell(i, j);
+            let sum = getSumNeighbors(i, j);
+
+            if (me) {                    
+                if ((sum=3) | (sum=2)) {
+                    do next.set(i, j, 1);
+                }
+                else {
+                    do next.set(i, j, 0);
+                }
+            }
+            else {                    
+                if (sum=3) {
+                    do next.set(i, j, 1);
+                }
+                else {
+                    do next.set(i, j, 0);
+                }
+            }
+            let idx = idx + 1;
+
+        }
+        // swap matrix
+        let tmp = mtx;
+        let mtx = next;
+        let next = tmp;
+
+        let generation = generation+1;
+
+        return;
+    }
+
+    // draw cells
+    method void draw() {
+        var int idx;
+        var int i, j;
+        
+        // clear the display
+        do Screen.clearScreen();
+        do Screen.setColor(true);
+        let idx=0;
+        while (idx < size) {                
+            let i = idx / cols;
+            let j = MathUtil.mod(idx, cols);
+
+            if (mtx.at(idx)) {
+                do Lifegame.drawMonster((i*512) + j);
+            }
+            let idx=idx+1;
+        }
+        do Output.moveCursor(0,0);
+        do Output.printInt(generation);
+
+        return;
+    }
+
+    // get a seed from a string
+    function int getSeed(String s) {
+        var int sum, i;
+        while (i < s.length()) {
+            let sum = sum + s.charAt(i);
+            let i=i+1;
+        }
+        return sum;
+    }
+
+    // start the game
+    method void run() {
+        var char key;  // the key currently pressed by the user
+        var boolean exit;
+        var int seed;
+        var String s;
+        let exit = false;
+    
+        let s = Keyboard.readLine("Any string");
+        let seed = Lifegame.getSeed(s);
+
+        do init(seed);
+        do draw();
+
+        let key = 0;
+        while (~exit) {
+          let key = Keyboard.keyPressed();
+          if (key = 81)  { let exit = true; }     // q key
+          
+          do nextGeneration();
+          do draw();
+      } // while
+      return;
+    }
+
+    // draw a monser in 16x16
+    function void drawMonster(int location) {
+        var int memAddress;
+        let memAddress = 16384+location;
+        do Memory.poke(memAddress+0, 0);
+        do Memory.poke(memAddress+32, 0);
+        do Memory.poke(memAddress+64, 384);
+        do Memory.poke(memAddress+96, 2016);
+        do Memory.poke(memAddress+128, 4080);
+        do Memory.poke(memAddress+160, 7608);
+        do Memory.poke(memAddress+192, 8184);
+        do Memory.poke(memAddress+224, 2448);
+        do Memory.poke(memAddress+256, 4104);
+        do Memory.poke(memAddress+288, 2064);
+        do Memory.poke(memAddress+320, 0);
+        do Memory.poke(memAddress+352, 0);
+        do Memory.poke(memAddress+384, 0);
+        do Memory.poke(memAddress+416, 0);
+        do Memory.poke(memAddress+448, 0);
+        do Memory.poke(memAddress+480, 0);
+        return;
+    }
+
+    // draw 16x16 white square
+    function void drawEmpty(int location) {
+        var int memAddress;
+        let memAddress = 16384+location;
+        do Memory.poke(memAddress+0, 0);
+        do Memory.poke(memAddress+32, 0);
+        do Memory.poke(memAddress+64, 0);
+        do Memory.poke(memAddress+96, 0);
+        do Memory.poke(memAddress+128, 0);
+        do Memory.poke(memAddress+160, 0);
+        do Memory.poke(memAddress+192, 0);
+        do Memory.poke(memAddress+224, 0);
+        do Memory.poke(memAddress+256, 0);
+        do Memory.poke(memAddress+288, 0);
+        do Memory.poke(memAddress+320, 0);
+        do Memory.poke(memAddress+352, 0);
+        do Memory.poke(memAddress+384, 0);
+        do Memory.poke(memAddress+416, 0);
+        do Memory.poke(memAddress+448, 0);
+        do Memory.poke(memAddress+480, 0);
+        return;
+    }
+}

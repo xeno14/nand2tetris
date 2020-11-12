@@ -1,0 +1,19 @@
+
+// Mathmatical utilities
+class MathUtil {
+
+    function int mod(int x, int y) {
+        return (x - ((x/y)*y));
+    }
+
+    function int pow(int x, int n) {
+        var int i, res;
+        let res = 1;
+        let i = 0;
+        while (i < n) {
+            let res=res*x;
+            let i=i+1;
+        }
+        return res;
+    }
+}

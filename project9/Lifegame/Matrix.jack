@@ -1,0 +1,78 @@
+// Represents matrix
+class Matrix {
+
+    field int rows, cols, size;  // matrix size
+    field Array data;            // use 1D array to represent a 2D array
+
+    constructor Matrix new(int rows_, int cols_) {
+        var int i;
+        let rows = rows_;
+        let cols = cols_;
+        let size = rows * cols;
+        let data = Array.new(size);
+        // initialize with zeros
+        let i = 0;
+        while (i < size) {
+            let data[i] = 0;
+            let i=i+1;
+        }
+        return this;
+    }
+
+    method void dispose() {
+        do data.dispose();
+        do Memory.deAlloc(this);
+        return;
+    }
+
+    method int getCols() {
+        return cols;
+    }
+
+    method int getRows() {
+        return rows;
+    }
+
+    method int getSize() {
+        return size;
+    }
+
+    method int getIndex(int i, int j) {
+        return (i * cols) + j;
+    }
+
+    method int get(int i, int j) {
+        var int idx;
+        let idx = getIndex(i, j);
+        return data[idx];
+    }
+
+    method int at(int idx) {
+        return data[idx];
+    }
+
+    method void setAt(int idx, int value) {
+        let data[idx] = value;
+        return;
+    }
+
+    method void set(int i, int j, int value) {
+        var int idx;
+        let idx = getIndex(i, j);
+        let data[idx] = value;
+        return;
+    }
+
+    method void print() {
+        var int idx;
+        let idx = 0;
+        while (idx < size) {
+            do Output.printInt(data[idx]);
+            if (~MathUtil.mod(idx, cols)) {
+                do Output.println();
+            }
+            let idx=idx+1;
+        }
+        return;
+    }
+}

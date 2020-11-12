@@ -1,0 +1,28 @@
+// Generates random numbers using Linear congruential generators
+class Random {
+
+    field int value;
+    field int A, B, M;
+
+    constructor Random new (int seed) {
+        let value = seed;
+        let A = (4*12 + 1); 
+        let B = 12345;
+        let M = 256;
+        return this;
+    }
+
+    method void dispose() {
+        do Memory.deAlloc(this);
+        return;
+    }
+
+    method int getM() {
+        return M;
+    }
+
+    method int get() {
+        let value = MathUtil.mod((value * A) + B, M);
+        return value;
+    }
+}

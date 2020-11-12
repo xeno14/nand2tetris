@@ -1,0 +1,68 @@
+class Main {
+
+    function void main() {
+        // Comment out me
+        // do Main.runTest();
+
+        var Lifegame lifegame;
+        let lifegame = Lifegame.new(16, 32);
+
+        do lifegame.run();
+
+        return;
+    }
+
+    /**
+     * TEST FUNCTIONS
+     */
+    function void runTest() {
+        do Main.testMathUtil();
+        do Main.testMatrix();
+
+        return;
+    }
+
+    function void compareAndPrint(String case, int expected, int actual) {
+        do Output.printString(case);
+        do Output.printString(": Expected=");
+        do Output.printInt(expected);
+        do Output.printString(" Actual=");
+        do Output.printInt(actual);
+        if (~(expected - actual)) {
+            do Output.printString(" ... OK!");
+        } else {
+            do Output.printString(" ... WRONG!");
+        }
+        do Output.println();
+        return;
+    }
+
+    function void testMathUtil() {
+        var int x, y, expected;
+        let x = 12;
+        let y = 5;
+        do Main.compareAndPrint("mod(12,5)", 2, MathUtil.mod(x, y));
+
+        let x = 12;
+        let y = 4;
+        do Main.compareAndPrint("mod(12,4)", 0, MathUtil.mod(x, y));
+
+        return;
+    }
+
+    function void testMatrix() {
+        var Matrix mtx;
+        let mtx = Matrix.new(2, 3);
+
+        do mtx.set(0, 0, 1);
+        do mtx.set(0, 1, 2);
+        do mtx.set(0, 2, 3);
+        do mtx.set(1, 0, 4);
+        do mtx.set(1, 1, 5);
+        do mtx.set(1, 2, 6);
+
+        do mtx.print();
+
+        return;
+    }
+}
