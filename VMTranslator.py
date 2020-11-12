@@ -676,6 +676,8 @@ class Main:
 
         # input
         self.input_path = input_path
+        if not os.path.exists(self.input_path):
+            raise FileNotFoundError(self.input_path)
         if input_path.endswith(".vm"):
             self.input_files = [input_path]
             self.is_directory = False
