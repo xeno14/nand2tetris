@@ -163,7 +163,7 @@ class Lifegame {
         var String s;
         let exit = false;
     
-        let s = Keyboard.readLine("Any string");
+        let s = Keyboard.readLine("Enter any string to start> ");
         let seed = Lifegame.getSeed(s);
 
         do init(seed);
