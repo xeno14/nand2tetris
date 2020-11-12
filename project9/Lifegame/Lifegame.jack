@@ -124,21 +124,27 @@ class Lifegame {
     // draw cells
     method void draw() {
         var int idx;
-        var int i, j;
+        var int i, j, me, prev;
         
         // clear the display
-        do Screen.clearScreen();
         do Screen.setColor(true);
         let idx=0;
         while (idx < size) {                
             let i = idx / cols;
             let j = MathUtil.mod(idx, cols);
 
-            if (mtx.at(idx)) {
-                do Lifegame.drawMonster((i*512) + j);
+            let me = mtx.get(i, j);
+            let prev = next.get(i, j);
+            if (~(me = prev)) {
+                if (me) {
+                    do Lifegame.drawMonster((i*512) + j);
+                } else {
+                    do Lifegame.drawEmpty((i*512) + j);
+                }
             }
             let idx=idx+1;
         }
+        // show generation
         do Output.moveCursor(0,0);
         do Output.printInt(generation);
 
@@ -163,10 +169,15 @@ class Lifegame {
         var String s;
         let exit = false;
     
+        do Output.moveCursor(9, 25);
+        do Output.printString("L I F E G A M E");
+
+        do Output.moveCursor(12, 7);
         let s = Keyboard.readLine("Enter any string to start> ");
         let seed = Lifegame.getSeed(s);
 
         do init(seed);
+        do Screen.clearScreen();
         do draw();
 
         let key = 0;
