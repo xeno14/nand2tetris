@@ -53,6 +53,14 @@ class Keyword(StringEnum):
 
 class Reader:
     """read a file ignoring leading spaces
+
+    Example:
+    if (x<0) {
+        let state = "negative";
+    }
+    
+    repeating word=reader.head_word() and reader.move(len(word)) until EOF yeilds:
+    'if' '(x<0)' '{' 'let' 'state' '=' '"negative";' '}
     """
 
     def __init__(self, f):
