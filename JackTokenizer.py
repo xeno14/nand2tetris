@@ -6,49 +6,54 @@ class StringEnum(enum.Enum):
     @classmethod
     def from_str(cls, s: str) -> "StringEnum":
         for e in cls:
-            if e.value[0] == s:
+            if e.value == s:
                 return e
         raise ValueError(f"{s} is not defined in {cls.__name__}")
 
     @classmethod
     def has_value(cls, value: str) -> bool:
-        return any(value == e.value[0] for e in cls)
+        return any(value == e.value for e in cls)
 
 
 class TokenType(enum.Enum):
 
-    UNKNOWN = "unknown",
-    KEYWORD = "keyword",
-    SYMBOL = "symbol",
-    IDENTIFIER = "identifier",
-    INT_CONST = "integerConstant",
-    STRING_CONST = "stringConstant",
-    RETURN = "return",
+    UNKNOWN = "unknown"
+    # termianl
+    KEYWORD = "keyword"
+    SYMBOL = "symbol"
+    IDENTIFIER = "identifier"
+    INT_CONST = "integerConstant"
+    STRING_CONST = "stringConstant"
+    RETURN = "return"
+
+    # non termianl
+    CLASS = "class"
+    SUBROUTINEDREC = "subroutineDec"
 
 
 class Keyword(StringEnum):
 
-    CLASS = "class",
-    METHOD = "method",
-    FUNCTION = "function",
-    CONSTRUCTOR = "constructor",
-    INT = "int",
-    BOOLEAN = "boolean",
-    CHAR = "char",
-    VOID = "void",
-    VAR = "var",
-    STATIC = "static",
-    FIELD = "field",
-    LET = "let",
-    DO = "do",
-    IF = "if",
-    ELSE = "else",
-    WHILE = "while",
-    RETURN = "return",
-    TRUE = "true",
-    FALSE = "false",
-    NULL = "null",
-    THIS = "this",
+    CLASS = "class"
+    METHOD = "method"
+    FUNCTION = "function"
+    CONSTRUCTOR = "constructor"
+    INT = "int"
+    BOOLEAN = "boolean"
+    CHAR = "char"
+    VOID = "void"
+    VAR = "var"
+    STATIC = "static"
+    FIELD = "field"
+    LET = "let"
+    DO = "do"
+    IF = "if"
+    ELSE = "else"
+    WHILE = "while"
+    RETURN = "return"
+    TRUE = "true"
+    FALSE = "false"
+    NULL = "null"
+    THIS = "this"
 
 
 class Reader:
@@ -252,6 +257,9 @@ class JackTokenizer:
         only when token_type() is KEYWORD.
         """
         return Keyword.form_str(self._raw_token)
+    
+    def token(self) -> str:
+        return self._raw_token
 
     def symbol(self) -> str:
         """Returns the charactor which is the current token. Should be called
@@ -296,7 +304,7 @@ def main():
 
             token_type = tokenizer.token_type()
             token = tokenizer._raw_token
-            token_type_str, = token_type.value
+            token_type_str = token_type.value
 
             if token_type == TokenType.SYMBOL:
                 token = saxutils.escape(token)
