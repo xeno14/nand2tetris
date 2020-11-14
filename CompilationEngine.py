@@ -66,8 +66,9 @@ class TerminalNode(TreeNode):
         raise NotImplementedError("never call 'add'")
 
     def to_xml(self, fout, depth=0):
+        from xml.sax import saxutils
         indent = "  " * depth
-        tag = f"<{self.name}> {self.token} </{self.name}>"
+        tag = f"<{self.name}> {saxutils.escape(self.token)} </{self.name}>"
         fout.write(indent + tag + "\n")
     
 
@@ -313,6 +314,7 @@ class CompilatonEngine:
 
         let a = 1;
         let a[i] = foo;
+        let a = Foo.bar();
         """
         # let <identifier>
         node = NonTerminalNode(NonTerminalType.LET_STATEMENT)
@@ -367,6 +369,9 @@ class CompilatonEngine:
         do foo(<expr>, <expr>)
         a[<expr>]
         """
+        # TODO remove me lator
+        print(self.tokenizer.current_line())
+
         node = NonTerminalNode(NonTerminalType.EXPRESSION)
         self.compile_term(node)
         # termination
@@ -382,10 +387,34 @@ class CompilatonEngine:
         parent.add(node)
     
     def compile_term(self, parent: TreeNode):
+        """
+        x
+        a[i]
+        foo.bar()
+        "hogehoge"
+        1
+        """
         node = NonTerminalNode(NonTerminalType.TERM)
-        token_type, token = self.eat()
-        child = TerminalNode(token_type, token)
-        node.add(child)
+        node.add(self.eat_terminal())
+
+        # array
+        if self.is_symbol("["):
+            node.add(self.eat_symbol("["))
+            self.compile_expression(node)
+            node.add(self.eat_symbol("]"))
+        # function call
+        elif self.is_symbol("."):
+            node.add(
+                self.eat_symbol("."),
+                self.eat_identifier(), # funcition name
+                self.eat_symbol("(")
+            )
+            self.compile_expression_list(node)
+            node.add(self.eat_symbol(")"))
+        # member function call
+        elif self.is_symbol("("):
+            raise NotImplementedError()
+
         parent.add(node)
     
     def compile_expression_list(self, parent: TreeNode):
