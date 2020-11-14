@@ -370,7 +370,7 @@ class CompilatonEngine:
         node = NonTerminalNode(NonTerminalType.EXPRESSION)
         self.compile_term(node)
         # termination
-        if any(self.is_symbol(e) for e in ";)]"):
+        if any(self.is_symbol(e) for e in ",;)]"):
             pass
         else:
             if self.is_symbol():
