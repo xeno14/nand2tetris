@@ -280,6 +280,8 @@ class CompilatonEngine:
                 self.compile_return(node)
             elif self.is_keyword(Keyword.IF):
                 self.compile_if_statement(node)
+            elif self.is_keyword(Keyword.WHILE):
+                self.compile_while_statement(node)
             else:
                 print(f"ignoring {self.eat()}")
         parent.add(node)
@@ -365,7 +367,6 @@ class CompilatonEngine:
         do foo(<expr>, <expr>)
         a[<expr>]
         """
-        print(self.tokenizer.reader.line)
         node = NonTerminalNode(NonTerminalType.EXPRESSION)
         self.compile_term(node)
         # termination
