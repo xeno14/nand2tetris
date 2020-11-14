@@ -15,7 +15,7 @@ class StringEnum(enum.Enum):
         return any(value == e.value for e in cls)
 
 
-class TokenType(enum.Enum):
+class TokenType(StringEnum):
 
     UNKNOWN = "unknown"
     # termianl
@@ -25,10 +25,8 @@ class TokenType(enum.Enum):
     INT_CONST = "integerConstant"
     STRING_CONST = "stringConstant"
     RETURN = "return"
-
-    # non termianl
-    CLASS = "class"
-    SUBROUTINEDREC = "subroutineDec"
+    
+    NONTERMINAL = "nonterminal"
 
 
 class Keyword(StringEnum):
@@ -256,7 +254,8 @@ class JackTokenizer:
         """Returns the keyword which is the current token. Should be called
         only when token_type() is KEYWORD.
         """
-        return Keyword.form_str(self._raw_token)
+        assert self._token_type == TokenType.KEYWORD
+        return Keyword.from_str(self._raw_token)
     
     def token(self) -> str:
         return self._raw_token
@@ -265,15 +264,19 @@ class JackTokenizer:
         """Returns the charactor which is the current token. Should be called
         only when token_type() is SYMBOL.
         """
+        assert self._token_type == TokenType.SYMBOL
         return self._raw_token
 
     def identifier(self) -> str:
+        assert self._token_type == TokenType.IDENTIFIER
         return self._raw_token
 
     def int_val(self) -> int:
+        assert self._token_type == TokenType.INT_CONST
         return int(self._raw_token)
 
     def string_val(self) -> str:
+        assert self._token_type == TokenType.STRING_CONST
         return self._raw_token
 
 
