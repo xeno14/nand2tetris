@@ -162,6 +162,9 @@ class JackTokenizer:
 
     def has_more_tokens(self) -> bool:
         return not self.reader.is_eof()
+    
+    def current_line(self) -> str:
+        return self.reader.line
 
     def advance(self):
         """Gets the next token from the input and makes it the current token.

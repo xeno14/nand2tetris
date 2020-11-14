@@ -124,9 +124,10 @@ class CompilatonEngine:
     # ----------------------------------------------------------------
     # eat functions to build TreeNode
     # ----------------------------------------------------------------
-    def eat_terminal(self, expected_token_type: TokenType, expected_token: str="") -> TerminalNode:
+    def eat_terminal(self, expected_token_type: TokenType=None, expected_token: str="") -> TerminalNode:
         token_type, token = self.eat()
-        assert token_type == expected_token_type
+        if expected_token_type is not None:
+            assert token_type == expected_token_type
         if expected_token:
             assert token == expected_token
         return TerminalNode(token_type=token_type, token=token)
@@ -140,16 +141,24 @@ class CompilatonEngine:
         else:
             return self.eat_terminal(TokenType.KEYWORD, keyword.value)
 
-    def eat_symbol(self, symbol: str) -> TerminalNode:
-        assert symbol in JackTokenizer.SYMBOLS
+    def eat_symbol(self, symbol: str="") -> TerminalNode:
+        if not symbol == "":
+            assert symbol in JackTokenizer.SYMBOLS
         return self.eat_terminal(TokenType.SYMBOL, symbol)
 
-    def is_symbol(self, expected_symbol: str) -> bool:
-        return self.tokenizer.token_type() == TokenType.SYMBOL and self.tokenizer.symbol() == expected_symbol
+    def is_symbol(self, expected_symbol: str="") -> bool:
+        type_ok = self.tokenizer.token_type() == TokenType.SYMBOL
+        if len(expected_symbol) == 0:
+            return type_ok
+        else:
+            return type_ok and self.tokenizer.symbol() == expected_symbol
     
     def is_keyword(self, expected_keyword: Keyword) -> bool:
         return self.tokenizer.token_type() == TokenType.KEYWORD and self.tokenizer.keyword() == expected_keyword
-
+    
+    # ----------------------------------------------------------------
+    # functions to complie
+    # ----------------------------------------------------------------
     def compile_class(self):
         """jack file always starts with 'class' keyword
         """
@@ -164,7 +173,7 @@ class CompilatonEngine:
         while self.tokenizer.has_more_tokens() and not self.is_symbol("}"):
             # for class, expect keywords only
             # classVarDec
-            if self.is_keyword(Keyword.FIELD):
+            if self.is_keyword(Keyword.FIELD) or self.is_keyword(Keyword.STATIC):
                 self.compile_class_var_dec(self.root)
             elif self.is_keyword(Keyword.CONSTRUCTOR) or self.is_keyword(Keyword.METHOD) or self.is_keyword(Keyword.FUNCTION):
                 self.compile_subroutine(self.root)
@@ -179,7 +188,7 @@ class CompilatonEngine:
         """
         node = NonTerminalNode(NonTerminalType.CLASS_VAR_DEC)
         node.add(
-            self.eat_keyword(Keyword.FIELD)
+            self.eat_keyword()
         )
         while self.tokenizer.has_more_tokens():
             if self.is_symbol(";"):
@@ -225,7 +234,12 @@ class CompilatonEngine:
         body.add(
             self.eat_symbol("{")
         )
+        # optinally variable declarations
+        while self.is_keyword(Keyword.VAR):
+            self.compile_var_dec(body)
+        # statement
         self.compile_statements(body)
+        # end of body
         body.add(
             self.eat_symbol("}")
         )
@@ -257,7 +271,7 @@ class CompilatonEngine:
         while self.tokenizer.has_more_tokens():
             if self.is_symbol("}"):
                 break
-            # var, let, do, return, if, while
+            # let, do, return, if, while
             if self.is_keyword(Keyword.LET):
                 self.compile_let(node)
             elif self.is_keyword(Keyword.DO):
@@ -270,13 +284,51 @@ class CompilatonEngine:
                 print(f"ignoring {self.eat()}")
         parent.add(node)
     
+    def compile_var_dec(self, parent: TreeNode):
+        """
+        var int x, y;
+        var int x;
+        """
+        node = NonTerminalNode(NonTerminalType.VAR_DEC)
+        node.add(
+            self.eat_keyword(Keyword.VAR),  # var
+            self.eat_terminal()             # type can be keyword or identifier
+        )
+        while self.tokenizer.has_more_tokens():
+            node.add(self.eat_identifier())
+            if self.is_symbol(";"):
+                break
+            elif self.is_symbol(","):
+                node.add(self.eat_symbol(","))
+            else:
+                raise SyntaxError(self.tokenizer.current_line())
+        node.add(self.eat_symbol(";"))
+        parent.add(node)
+    
     def compile_let(self, parent: TreeNode):
+        """
+        let <lhs> = <expression>
+
+        let a = 1;
+        let a[i] = foo;
+        """
+        # let <identifier>
         node = NonTerminalNode(NonTerminalType.LET_STATEMENT)
         node.add(
             self.eat_keyword(Keyword.LET),
-            self.eat_identifier(),
+            self.eat_identifier()
+        )
+        # can be array
+        if self.is_symbol("["):
+            node.add(self.eat_symbol("["))
+            self.compile_expression(node)
+            node.add(self.eat_symbol("]"))
+
+        # =
+        node.add(
             self.eat_symbol("="),
         )
+        # rhs is expression
         self.compile_expression(node)
         node.add(self.eat_symbol(";"))
         parent.add(node)
@@ -311,14 +363,24 @@ class CompilatonEngine:
         """
         let a = <expr>;
         do foo(<expr>, <expr>)
+        a[<expr>]
         """
+        print(self.tokenizer.reader.line)
         node = NonTerminalNode(NonTerminalType.EXPRESSION)
-        # TODO for now, assume expression always consists of one term
         self.compile_term(node)
+        # termination
+        if any(self.is_symbol(e) for e in ";)]"):
+            pass
+        else:
+            if self.is_symbol():
+                # binary operation
+                node.add(self.eat_symbol())
+                self.compile_term(node)
+            else:
+                self.compile_term(node)
         parent.add(node)
     
     def compile_term(self, parent: TreeNode):
-        # TODO for now, assume expression is a terminal
         node = NonTerminalNode(NonTerminalType.TERM)
         token_type, token = self.eat()
         child = TerminalNode(token_type, token)
@@ -382,7 +444,7 @@ class CompilatonEngine:
         # else-statement is optional
         if self.is_keyword(Keyword.ELSE):
             node.add(
-                self.eat_keyword(Keyword.ELSE).
+                self.eat_keyword(Keyword.ELSE),
                 self.eat_symbol("{")
             )
             self.compile_statements(node)
