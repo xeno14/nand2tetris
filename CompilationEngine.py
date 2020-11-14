@@ -369,9 +369,6 @@ class CompilatonEngine:
         do foo(<expr>, <expr>)
         a[<expr>]
         """
-        # TODO remove me lator
-        print(self.tokenizer.current_line())
-
         node = NonTerminalNode(NonTerminalType.EXPRESSION)
         self.compile_term(node)
         # termination
@@ -393,9 +390,30 @@ class CompilatonEngine:
         foo.bar()
         "hogehoge"
         1
+        (x+1) * (y+2)
+        ~flag
         """
         node = NonTerminalNode(NonTerminalType.TERM)
-        node.add(self.eat_terminal())
+        # start of another expression
+        if self.is_symbol("("):
+            node.add(self.eat_symbol("("))
+            self.compile_expression(node)
+            node.add(self.eat_symbol(")"))
+        # unary operation
+        elif self.is_symbol():
+            # expect ~ or -
+            symbol = self.tokenizer.symbol()
+            if symbol not in "-~":
+                raise SyntaxError(f"unexpected unary operator {symbol}")
+            node.add(self.eat_symbol(symbol))
+            if self.is_symbol("("):
+                self.compile_term(node)
+            # otherwise, an identifier should follow
+            else:
+                self.compile_term(node)
+        # otherwise it must be an expression
+        else:
+            node.add(self.eat_terminal())
 
         # array
         if self.is_symbol("["):
@@ -413,7 +431,9 @@ class CompilatonEngine:
             node.add(self.eat_symbol(")"))
         # member function call
         elif self.is_symbol("("):
-            raise NotImplementedError()
+            node.add(self.eat_symbol("("))
+            self.compile_expression_list(node)
+            node.add(self.eat_symbol(")"))
 
         parent.add(node)
     
