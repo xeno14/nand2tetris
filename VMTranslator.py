@@ -1,7 +1,7 @@
 import io
 import enum
 import collections
-from typing import *
+from typing import List
 import os.path
 
 

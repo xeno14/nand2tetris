@@ -1,5 +1,5 @@
 from JackTokenizer import JackTokenizer, TokenType, Keyword, StringEnum
-from typing import *
+from typing import List, Tuple
 import io
 
 
@@ -102,7 +102,7 @@ class NonTerminalNode(TreeNode):
         )
 
 
-class CompilatonEngine:
+class CompilationEngine:
 
     def __init__(self, tokenizer: JackTokenizer, fout):
         self.tokenizer = tokenizer
@@ -535,7 +535,7 @@ def main():
     output_file = open(output_filename, "w")
     # output_file = sys.stdout
 
-    engine = CompilatonEngine(tokenizer, output_file)
+    engine = CompilationEngine(tokenizer, output_file)
     engine.compile_class()
     engine.write()
 
