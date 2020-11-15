@@ -1,32 +1,7 @@
-from JackTokenizer import JackTokenizer, TokenType, Keyword, StringEnum
+from JackTokenizer import JackTokenizer
+from constants import TokenType, Keyword, NonTerminalType
 from typing import List, Tuple
 import io
-
-
-# String constant
-CATEGORY = "category"
-
-
-import enum
-
-
-class NonTerminalType(StringEnum):
-
-    CLASS = "class"
-    CLASS_VAR_DEC = "classVarDec"
-    SUBROUTINE_DEC = "subroutineDec"
-    PARAMETER_LIST = "parameterList"
-    SUBROUTINE_BODY = "subroutineBody"
-    VAR_DEC = "varDec"
-    STATEMETNS = "statements"
-    LET_STATEMENT = "letStatement"
-    IF_STATEMENT = "ifStatement"
-    WHILE_STATEMENT = "whileStatement"
-    DO_STATEMENT = "doStatement"
-    RETURN_STATEMENT = "returnStatement"
-    EXPRESSION = "expression"
-    TERM = "term"
-    EXPRESSION_LIST = "expressionList"
 
 
 class TreeNode:
