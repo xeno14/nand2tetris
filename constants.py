@@ -23,6 +23,38 @@ class StringEnum(enum.Enum):
         return self.value
 
 
+# ----------------------------------------------------------------
+# VM
+# ----------------------------------------------------------------
+class Segment(StringEnum):
+    """memory segments in VM
+    """
+
+    CONSTANT = "constant"
+    ARGUMENT = "argument"
+    LOCAL = "local"
+    THIS = "this"
+    THAT = "that"
+    TEMP = "temp"
+    STATIC = "static"
+
+
+class ArithmeticCommand(StringEnum):
+
+    ADD = "add"
+    SUB = "sub"
+    NEG = "neg"
+    EQ = "eq"
+    GT = "gt"
+    LT = "lt"
+    AND = "and"
+    OR = "or"
+    NOT = "not"
+
+
+# ----------------------------------------------------------------
+# Jack language
+# ----------------------------------------------------------------
 class TokenType(StringEnum):
 
     UNKNOWN = "unknown"
