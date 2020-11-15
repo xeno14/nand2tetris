@@ -14,6 +14,9 @@ class StringEnum(enum.Enum):
     def has_value(cls, value: str) -> bool:
         return any(value == e.value for e in cls)
 
+    def to_str(self):
+        return self.value
+
 
 class TokenType(StringEnum):
 

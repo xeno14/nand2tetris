@@ -3,6 +3,13 @@ from typing import List, Tuple
 import io
 
 
+# String constant
+CATEGORY = "category"
+
+
+import enum
+
+
 class NonTerminalType(StringEnum):
 
     CLASS = "class"
@@ -24,12 +31,12 @@ class NonTerminalType(StringEnum):
 
 class TreeNode:
 
-    def __init__(self, token_type: TokenType, token: str="", children: List["TreeNode"]=None):
-        if children is None:
-            children = []
-        self.children = children
+    def __init__(self, token_type: TokenType, token: str = "", children: List["TreeNode"] = None,
+                 addenda: dict = None):
+        self.children = children if children is not None else list()
         self.token_type = token_type
         self.token = token
+        self.addenda = addenda if addenda is not None else dict()
 
     @property
     def name(self):
@@ -45,6 +52,12 @@ class TreeNode:
         for child in childlen:
             self.children.append(child)
     
+    def set_addendum(self, key: str, value: str):
+        self.addenda[key] = value
+    
+    def get_addedum(self, key: str) -> str:
+        self.addenda[key]
+    
     def to_xml(self, fout, depth=0):
         raise NotImplementedError
 
@@ -55,6 +68,10 @@ class TreeNode:
         with io.StringIO() as f:
             self.to_xml(f)
             return f.getvalue()
+        
+    def _addenda_str(self) -> str:
+        s = " ".join([k + "=" + v for k, v in self.addenda.items()])
+        return s
 
 
 class TerminalNode(TreeNode):
@@ -65,10 +82,12 @@ class TerminalNode(TreeNode):
     def add(self):
         raise NotImplementedError("never call 'add'")
 
-    def to_xml(self, fout, depth=0):
+    def to_xml(self, fout, depth=0, show_addenda=False):
         from xml.sax import saxutils
         indent = "  " * depth
-        tag = f"<{self.name}> {saxutils.escape(self.token)} </{self.name}>"
+        addenda = self._addenda_str()
+        name = self.name if addenda == "" else self.name + " " + addenda
+        tag = f"<{name}> {saxutils.escape(self.token)} </{self.name}>"
         fout.write(indent + tag + "\n")
     
 
@@ -86,9 +105,11 @@ class NonTerminalNode(TreeNode):
     def name(self) -> str:
         return self.nodetype.value
 
-    def to_xml(self, fout, depth=0):
+    def to_xml(self, fout, depth=0, show_addenda=False):
         indent = "  " * depth
-        opentag = f"<{self.name}>"
+        addenda = self._addenda_str()
+        name = self.name if addenda == "" else self.name + " " + addenda
+        opentag = f"<{name}>"
         closetag = f"</{self.name}>"
         fout.write(indent + opentag + "\n")
         for child in self.children:
@@ -537,7 +558,7 @@ def main():
 
     tree_builder = ParseTreeBuilder(tokenizer)
     tree = tree_builder.build()
-    tree.to_xml(output_file)
+    tree.to_xml(output_file, show_addenda=True)
 
     input_file.close()
     output_file.close()
