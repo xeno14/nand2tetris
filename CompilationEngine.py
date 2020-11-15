@@ -102,11 +102,10 @@ class NonTerminalNode(TreeNode):
         )
 
 
-class CompilationEngine:
+class ParseTreeBuilder:
 
-    def __init__(self, tokenizer: JackTokenizer, fout):
+    def __init__(self, tokenizer: JackTokenizer):
         self.tokenizer = tokenizer
-        self.fout = fout
         self.tokenizer.advance()
         self.root: TreeNode = None
         self.depth = 0
@@ -118,9 +117,6 @@ class CompilationEngine:
         token = self.tokenizer.token()
         self.tokenizer.advance()
         return token_type, token
-    
-    def write(self):
-        self.root.to_xml(self.fout)
 
     # ----------------------------------------------------------------
     # eat functions to build TreeNode
@@ -158,9 +154,13 @@ class CompilationEngine:
         return self.tokenizer.token_type() == TokenType.KEYWORD and self.tokenizer.keyword() == expected_keyword
     
     # ----------------------------------------------------------------
-    # functions to complie
+    # functions to analyse
     # ----------------------------------------------------------------
-    def compile_class(self):
+    def build(self) -> TreeNode:
+        self.parse_class()
+        return self.root
+
+    def parse_class(self):
         """jack file always starts with 'class' keyword
         """
         assert self.is_keyword(Keyword.CLASS)
@@ -175,15 +175,15 @@ class CompilationEngine:
             # for class, expect keywords only
             # classVarDec
             if self.is_keyword(Keyword.FIELD) or self.is_keyword(Keyword.STATIC):
-                self.compile_class_var_dec(self.root)
+                self.parse_class_var_dec(self.root)
             elif self.is_keyword(Keyword.CONSTRUCTOR) or self.is_keyword(Keyword.METHOD) or self.is_keyword(Keyword.FUNCTION):
-                self.compile_subroutine(self.root)
+                self.parse_subroutine(self.root)
             else:
                 _ = self.eat()
         self.root.add(
             self.eat_symbol("}"))
                 
-    def compile_class_var_dec(self, parent: TreeNode):
+    def parse_class_var_dec(self, parent: TreeNode):
         """
         field int x, y;
         """
@@ -203,7 +203,7 @@ class CompilationEngine:
             node.add(child)
         parent.add(node)
 
-    def compile_subroutine(self, parent: TreeNode):
+    def parse_subroutine(self, parent: TreeNode):
         """
         method void draw() {
             do Screen.setColor(x);
@@ -225,7 +225,7 @@ class CompilationEngine:
             self.eat_symbol("(")
         )
         # parameter list
-        self.compile_parameter_list(node)
+        self.parse_parameter_list(node)
         node.add(
             self.eat_symbol(")")
         )
@@ -237,9 +237,9 @@ class CompilationEngine:
         )
         # optinally variable declarations
         while self.is_keyword(Keyword.VAR):
-            self.compile_var_dec(body)
+            self.parse_var_dec(body)
         # statement
-        self.compile_statements(body)
+        self.parse_statements(body)
         # end of body
         body.add(
             self.eat_symbol("}")
@@ -248,7 +248,7 @@ class CompilationEngine:
         node.add(body)
         parent.add(node)
     
-    def compile_parameter_list(self, parent: TreeNode):
+    def parse_parameter_list(self, parent: TreeNode):
         """
         ()
         (int x, int y)
@@ -263,7 +263,7 @@ class CompilationEngine:
             node.add(child)
         parent.add(node)
     
-    def compile_statements(self, parent: TreeNode):
+    def parse_statements(self, parent: TreeNode):
         """
         var int a;
         let a = 1;
@@ -274,20 +274,20 @@ class CompilationEngine:
                 break
             # let, do, return, if, while
             if self.is_keyword(Keyword.LET):
-                self.compile_let(node)
+                self.parse_let(node)
             elif self.is_keyword(Keyword.DO):
-                self.compile_do(node)
+                self.parse_do(node)
             elif self.is_keyword(Keyword.RETURN):
-                self.compile_return(node)
+                self.parse_return(node)
             elif self.is_keyword(Keyword.IF):
-                self.compile_if_statement(node)
+                self.parse_if_statement(node)
             elif self.is_keyword(Keyword.WHILE):
-                self.compile_while_statement(node)
+                self.parse_while_statement(node)
             else:
                 print(f"ignoring {self.eat()}")
         parent.add(node)
     
-    def compile_var_dec(self, parent: TreeNode):
+    def parse_var_dec(self, parent: TreeNode):
         """
         var int x, y;
         var int x;
@@ -308,7 +308,7 @@ class CompilationEngine:
         node.add(self.eat_symbol(";"))
         parent.add(node)
     
-    def compile_let(self, parent: TreeNode):
+    def parse_let(self, parent: TreeNode):
         """
         let <lhs> = <expression>
 
@@ -325,7 +325,7 @@ class CompilationEngine:
         # can be array
         if self.is_symbol("["):
             node.add(self.eat_symbol("["))
-            self.compile_expression(node)
+            self.parse_expression(node)
             node.add(self.eat_symbol("]"))
 
         # =
@@ -333,11 +333,11 @@ class CompilationEngine:
             self.eat_symbol("="),
         )
         # rhs is expression
-        self.compile_expression(node)
+        self.parse_expression(node)
         node.add(self.eat_symbol(";"))
         parent.add(node)
 
-    def compile_do(self, parent: TreeNode):
+    def parse_do(self, parent: TreeNode):
         """
         do foo(<ExpressionList>)
         do Output.printInt(<ExpressionList>)
@@ -356,21 +356,21 @@ class CompilationEngine:
 
         # expression list (arguments for the function call)
         node.add(self.eat_symbol("("))
-        self.compile_expression_list(node)
+        self.parse_expression_list(node)
         node.add(
             self.eat_symbol(")"),
             self.eat_symbol(";"))
 
         parent.add(node)
 
-    def compile_expression(self, parent: TreeNode):
+    def parse_expression(self, parent: TreeNode):
         """
         let a = <expr>;
         do foo(<expr>, <expr>)
         a[<expr>]
         """
         node = NonTerminalNode(NonTerminalType.EXPRESSION)
-        self.compile_term(node)
+        self.parse_term(node)
         # termination
         if any(self.is_symbol(e) for e in ",;)]"):
             pass
@@ -378,12 +378,12 @@ class CompilationEngine:
             if self.is_symbol():
                 # binary operation
                 node.add(self.eat_symbol())
-                self.compile_term(node)
+                self.parse_term(node)
             else:
-                self.compile_term(node)
+                self.parse_term(node)
         parent.add(node)
     
-    def compile_term(self, parent: TreeNode):
+    def parse_term(self, parent: TreeNode):
         """
         x
         a[i]
@@ -397,7 +397,7 @@ class CompilationEngine:
         # start of another expression
         if self.is_symbol("("):
             node.add(self.eat_symbol("("))
-            self.compile_expression(node)
+            self.parse_expression(node)
             node.add(self.eat_symbol(")"))
         # unary operation
         elif self.is_symbol():
@@ -407,10 +407,10 @@ class CompilationEngine:
                 raise SyntaxError(f"unexpected unary operator {symbol}")
             node.add(self.eat_symbol(symbol))
             if self.is_symbol("("):
-                self.compile_term(node)
+                self.parse_term(node)
             # otherwise, an identifier should follow
             else:
-                self.compile_term(node)
+                self.parse_term(node)
         # otherwise it must be an expression
         else:
             node.add(self.eat_terminal())
@@ -418,7 +418,7 @@ class CompilationEngine:
         # array
         if self.is_symbol("["):
             node.add(self.eat_symbol("["))
-            self.compile_expression(node)
+            self.parse_expression(node)
             node.add(self.eat_symbol("]"))
         # function call
         elif self.is_symbol("."):
@@ -427,17 +427,17 @@ class CompilationEngine:
                 self.eat_identifier(), # funcition name
                 self.eat_symbol("(")
             )
-            self.compile_expression_list(node)
+            self.parse_expression_list(node)
             node.add(self.eat_symbol(")"))
         # member function call
         elif self.is_symbol("("):
             node.add(self.eat_symbol("("))
-            self.compile_expression_list(node)
+            self.parse_expression_list(node)
             node.add(self.eat_symbol(")"))
 
         parent.add(node)
     
-    def compile_expression_list(self, parent: TreeNode):
+    def parse_expression_list(self, parent: TreeNode):
         """
         ()
         (x)
@@ -445,14 +445,14 @@ class CompilationEngine:
         """
         node = NonTerminalNode(NonTerminalType.EXPRESSION_LIST)
         while self.tokenizer.has_more_tokens() and not self.is_symbol(")"):
-            self.compile_expression(node)
+            self.parse_expression(node)
             if self.is_symbol(","):
                 node.add(
                     self.eat_symbol(",")
                 )
         parent.add(node)
     
-    def compile_return(self, parent: TreeNode):
+    def parse_return(self, parent: TreeNode):
         """
         return x;
         return;
@@ -461,11 +461,11 @@ class CompilationEngine:
         node = NonTerminalNode(NonTerminalType.RETURN_STATEMENT)
         node.add(self.eat_keyword(Keyword.RETURN))
         if not self.is_symbol(";"):
-            self.compile_expression(node)
+            self.parse_expression(node)
         node.add(self.eat_symbol(";"))
         parent.add(node)
     
-    def compile_if_statement(self, parent: TreeNode):
+    def parse_if_statement(self, parent: TreeNode):
         """
         if (<expression>) {
             <statements>
@@ -483,11 +483,11 @@ class CompilationEngine:
             self.eat_keyword(Keyword.IF),
             self.eat_symbol("(")
         )
-        self.compile_expression(node)
+        self.parse_expression(node)
         node.add(
             self.eat_symbol(")"),
             self.eat_symbol("{"))
-        self.compile_statements(node)
+        self.parse_statements(node)
         node.add(
             self.eat_symbol("}")
         )
@@ -497,13 +497,13 @@ class CompilationEngine:
                 self.eat_keyword(Keyword.ELSE),
                 self.eat_symbol("{")
             )
-            self.compile_statements(node)
+            self.parse_statements(node)
             node.add(
                 self.eat_symbol("}")
             )
         parent.add(node)
     
-    def compile_while_statement(self, parent: TreeNode):
+    def parse_while_statement(self, parent: TreeNode):
         """
         while (<expression>) {
             <statements>
@@ -514,11 +514,11 @@ class CompilationEngine:
             self.eat_keyword(Keyword.WHILE),
             self.eat_symbol("(")
         )
-        self.compile_expression(node)
+        self.parse_expression(node)
         node.add(
             self.eat_symbol(")"),
             self.eat_symbol("{"))
-        self.compile_statements(node)
+        self.parse_statements(node)
         node.add(
             self.eat_symbol("}")
         )
@@ -535,9 +535,9 @@ def main():
     output_file = open(output_filename, "w")
     # output_file = sys.stdout
 
-    engine = CompilationEngine(tokenizer, output_file)
-    engine.compile_class()
-    engine.write()
+    tree_builder = ParseTreeBuilder(tokenizer)
+    tree = tree_builder.build()
+    tree.to_xml(output_file)
 
     input_file.close()
     output_file.close()

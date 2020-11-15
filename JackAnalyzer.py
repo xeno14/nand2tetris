@@ -1,4 +1,4 @@
-from CompilationEngine import CompilationEngine
+from CompilationEngine import ParseTreeBuilder
 from JackTokenizer import JackTokenizer
 
 
@@ -22,9 +22,9 @@ def main():
         output_filename = input_filename.replace(".jack", ".xml")
         output_file = open(output_filename, "w")
 
-        engine = CompilationEngine(tokenizer, output_file)
-        engine.compile_class()
-        engine.write()
+        tree_builder = ParseTreeBuilder(tokenizer)
+        tree = tree_builder.build()
+        tree.to_xml(output_file)
 
         input_file.close()
         output_file.close()
