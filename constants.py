@@ -57,6 +57,20 @@ class ArithmeticCommand(StringEnum):
     OR = "or"
     NOT = "not"
 
+    @classmethod
+    def from_symbol(cls, symbol: str) -> "ArithmeticCommand":
+        return {
+            "+": ArithmeticCommand.ADD,
+            "-": ArithmeticCommand.SUB,
+            "-": ArithmeticCommand.NEG,
+            "=": ArithmeticCommand.EQ,
+            ">": ArithmeticCommand.GT,
+            "<": ArithmeticCommand.LT,
+            "&": ArithmeticCommand.AND,
+            "|": ArithmeticCommand.OR,
+            "~": ArithmeticCommand.NOT,
+        }[symbol]
+
 
 # ----------------------------------------------------------------
 # Jack language
