@@ -111,3 +111,12 @@ class NonTerminalType(StringEnum):
     EXPRESSION = "expression"
     TERM = "term"
     EXPRESSION_LIST = "expressionList"
+
+
+class SymbolKind(StringEnum):
+
+    UNKNOWN = "unknown"
+    STATIC = "static"
+    FIELD = "field"
+    ARG = "argument"
+    VAR = "var"
