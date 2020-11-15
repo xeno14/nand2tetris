@@ -3,7 +3,7 @@ set -eu
 
 find projects/10/ | grep ".jack$" | while read input_file; do
     echo "----- $input_file -----"
-    python CompilationEngine.py $input_file
+    python ParseTree.py $input_file
 
     expected=${input_file/.jack/.xml}
     actual=${input_file/.jack/.mine.xml}
