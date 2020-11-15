@@ -22,6 +22,12 @@ class StringEnum(enum.Enum):
     def to_str(self):
         return self.value
 
+    def is_same(self, other):
+        if isinstance(other, str):
+            return self.value == other
+        else:
+            return self == other
+
 
 # ----------------------------------------------------------------
 # VM
@@ -120,3 +126,13 @@ class SymbolKind(StringEnum):
     FIELD = "field"
     ARG = "argument"
     VAR = "var"
+
+
+def _test():
+    assert Keyword.CLASS.is_same("class")
+    assert not Keyword.CLASS.is_same("foo")
+    assert Keyword.CLASS == "class"
+
+
+if __name__ == "__main__":
+    _test()

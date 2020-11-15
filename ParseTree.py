@@ -1,6 +1,6 @@
 from JackTokenizer import JackTokenizer
 from constants import TokenType, Keyword, NonTerminalType
-from typing import List, Tuple
+from typing import List, Tuple, Iterator
 import io
 
 
@@ -22,6 +22,9 @@ class TreeNode:
     
     def has_child(self):
         return not self.is_leaf()
+    
+    def is_terminal(self):
+        return not self.token_type == TokenType.NONTERMINAL
     
     def add(self, *childlen):
         for child in childlen:
@@ -47,6 +50,36 @@ class TreeNode:
     def _addenda_str(self) -> str:
         s = " ".join([k + "=" + v for k, v in self.addenda.items()])
         return s
+
+    def get_iterator(self) -> Iterator["TreeNode"]:
+        return TreeNodeIterator(self.children)
+    
+    def loop_children(self) -> "TreeNode":
+        it = self.get_iterator()
+        while it.has_next():
+            yield next(it)
+
+
+class TreeNodeIterator:
+    """assume that nodes are immutable during the visit
+    """
+    
+    def __init__(self, nodes: List[TreeNode]):
+        self.nodes = nodes
+        self.idx = 0
+    
+    def __iter__(self):
+        self.idx = 0
+    
+    def __next__(self) -> TreeNode:
+        if not self.has_next():
+            raise StopIteration
+        res = self.nodes[self.idx]
+        self.idx += 1
+        return res
+    
+    def has_next(self) -> bool:
+        return self.idx < len(self.nodes)
 
 
 class TerminalNode(TreeNode):

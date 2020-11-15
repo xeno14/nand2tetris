@@ -48,6 +48,9 @@ class SymbolTable:
     def index_of(self, name: str) -> int:
         return self.table.get(name, -1)
     
+    def has_name(self, name: str) -> bool:
+        return name in self.table
+    
 
 def _test():
     table = SymbolTable()
