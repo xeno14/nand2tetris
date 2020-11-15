@@ -171,8 +171,12 @@ class ParseTreeBuilder:
         else:
             return type_ok and self.tokenizer.symbol() == expected_symbol
     
-    def is_keyword(self, expected_keyword: Keyword) -> bool:
-        return self.tokenizer.token_type() == TokenType.KEYWORD and self.tokenizer.keyword() == expected_keyword
+    def is_keyword(self, expected_keyword: Keyword=None) -> bool:
+        type_ok = self.tokenizer.token_type() == TokenType.KEYWORD
+        if expected_keyword is None:
+            return type_ok
+        else:
+            return type_ok and self.tokenizer.keyword() == expected_keyword
     
     # ----------------------------------------------------------------
     # functions to analyse
@@ -236,9 +240,9 @@ class ParseTreeBuilder:
         node.add(
             self.eat_keyword(),     # 'method' or 'constructor' or 'function'
         )
-        # return type is an identifier or void (keyword)
-        if self.is_keyword(Keyword.VOID):
-            node.add(self.eat_keyword(Keyword.VOID))
+        # return type is an identifier or keyword (void, int, string)
+        if self.is_keyword():
+            node.add(self.eat_keyword())
         else:
             node.add(self.eat_identifier())
         node.add(

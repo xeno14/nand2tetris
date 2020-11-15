@@ -111,6 +111,8 @@ class Reader:
         self.line = self.line[i+len(s):]
 
     def move(self, d: int):
+        """move 'd' characters then skip blanks
+        """
         while d > len(self.line):
             d -= len(self.line)
             if not self.readline():
@@ -179,14 +181,7 @@ class JackTokenizer:
         while True:
             word = self.reader.head_word()
             # handle multi-line comments
-            if is_comment:
-                if word.startswith("*/"):
-                    is_comment = False
-                    self.reader.move(2)
-                    continue
-                else:
-                    self.reader.readline()
-                    continue
+            # start multiline comment
             if word.startswith("/*"):
                 i = self.reader.line.find("*/")
                 # can be one line comment
@@ -195,7 +190,16 @@ class JackTokenizer:
                 # otherwise skip the line
                 else:
                     is_comment = True
-                    self.reader.move(i)
+                    self.reader.readline()
+                continue
+            # middle of multiline comment
+            elif is_comment:
+                i = self.reader.line.find("*/")
+                if i >= 0:
+                    is_comment = False
+                    self.reader.move(i+2)
+                else:
+                    self.reader.readline()
                 continue
             # skip line comment
             if word.startswith("//"):
