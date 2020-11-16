@@ -121,11 +121,20 @@ class Context(dict):
         """look up a symbol in local then global
         """
         if name in self.local_symbols.table:
-            return self.local_symbols.table[name]
+            symbol = self.local_symbols.table[name]
         elif name in self.global_symbols.table:
-            return self.global_symbols.table[name]
+            symbol = self.global_symbols.table[name]
         else:
             return None
+        # increment index by 1 for ARG if the context is method
+        if symbol.kind == SymbolKind.ARG:
+            index = symbol.index
+            func_type = self.get("function_type", None)
+            if func_type == Keyword.METHOD:
+                index += 1
+            return Symbol(name=symbol.name, type=symbol.type, kind=symbol.kind, index=index)
+        else:
+            return symbol
 
     def nlocals(self):
         return len(self.local_symbols.table)
