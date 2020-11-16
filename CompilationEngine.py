@@ -243,6 +243,10 @@ class CompilationEngine:
             self.writer.write_push(Segment.CONSTANT, nfields)
             self.writer.write_call("Memory.alloc", 1)
             self.writer.write_pop(Segment.POINTER, 0)
+        elif context["function_type"] == Keyword.METHOD:
+            # push the first arugment = this to pointer 0
+            self.writer.write_push(Segment.ARGUMENT, 0)
+            self.writer.write_pop(Segment.POINTER, 0)
 
         for var in variables:
             self.compile_var_decl(context, var)
@@ -427,10 +431,10 @@ class CompilationEngine:
         if-goto IFTRUE
         goto IFFLASE
         label IFTRUE
-        <statements>
+        <true_statements>
         goto IFEND
         label IFFALSE (else)
-        <statements>
+        <false_statements>
         label IFEND
         """
         it = root.get_iterator()
@@ -440,36 +444,46 @@ class CompilationEngine:
         if_true_label = f"IF_TRUE{n}"
         if_false_label = f"IF_FALSE{n}"
         if_end_label = f"IF_END{n}"
+        has_else = False
 
         # if (expr)
         _ = Helper.eat_keyword(it, Keyword.IF)
         _ = Helper.eat_symbol(it, "(")
         expr = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
-        self.compile_expression(context, expr)
         _ = Helper.eat_symbol(it, ")")
         
-        # jump
-        self.writer.write_if(if_true_label)     # if-statement
-        self.writer.write_goto(if_false_label)  # else-statement
-
         # if true statements
-        self.writer.write_label(if_true_label)
         _ = Helper.eat_symbol(it, "{")
-        statements = Helper.eat_nonterminal(it, NonTerminalType.STATEMETNS)
-        self.compile_statements(context, statements)
-        self.writer.write_goto(if_end_label)
+        true_statements = Helper.eat_nonterminal(it, NonTerminalType.STATEMETNS)
         _ = Helper.eat_symbol(it, "}")
 
         # else statement (optional)
-        self.writer.write_label(if_false_label)
         if it.has_next():
+            has_else = True
             _ = Helper.eat_keyword(it, Keyword.ELSE)
             _ = Helper.eat_symbol(it, "{")
-            statements = Helper.eat_nonterminal(it, NonTerminalType.STATEMETNS)
-            self.compile_statements(context, statements)
+            false_statements = Helper.eat_nonterminal(it, NonTerminalType.STATEMETNS)
             _ = Helper.eat_symbol(it, "}")
-        # end label
-        self.writer.write_label(if_end_label)
+
+        self.compile_expression(context, expr)
+        if has_else:
+            self.writer.write_if(if_true_label)     # if-statement
+            self.writer.write_goto(if_false_label)  # else-statement
+            # true
+            self.writer.write_label(if_true_label)
+            self.compile_statements(context, true_statements)
+            self.writer.write_goto(if_end_label)
+            # false
+            self.writer.write_label(if_false_label)
+            self.compile_statements(context, false_statements)
+            self.writer.write_label(if_end_label)
+        else:
+            self.writer.write_if(if_true_label)     # if-statement
+            self.writer.write_goto(if_false_label)  # else-statement
+            # true
+            self.writer.write_label(if_false_label)
+            self.compile_statements(context, true_statements)
+            self.writer.write_label(if_false_label)
 
     def compile_expression_list(self, context: Context, root: TreeNode):
         """<expression> (, <expression>)*
