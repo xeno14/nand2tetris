@@ -275,6 +275,8 @@ class CompilationEngine:
                 self.compile_let_statement(context, statement)
             elif NonTerminalType.WHILE_STATEMENT.is_same(statement.name):
                 self.compile_while_statement(context, statement)
+            elif NonTerminalType.IF_STATEMENT.is_same(statement.name):
+                self.compile_if_statement(context, statement)
             else:
                 print(statement.name)
                 # raise NotImplementedError(statement.name)
@@ -369,6 +371,56 @@ class CompilationEngine:
         _ = Helper.eat_symbol(it, "}")
 
         self.writer.write_label(end_label)
+    
+    def compile_if_statement(self, context: Context, root: TreeNode):
+        """
+        <expr>
+        if-goto IFTRUE
+        goto IFFLASE
+        label IFTRUE
+        <statements>
+        goto IFEND
+        label IFFALSE (else)
+        <statements>
+        label IFEND
+        """
+        it = root.get_iterator()
+        
+        # labels
+        n = context.next_label_count(Keyword.IF)
+        if_true_label = f"IF_TRUE{n}"
+        if_false_label = f"IF_FALSE{n}"
+        if_end_label = f"IF_END{n}"
+
+        # if (expr)
+        _ = Helper.eat_keyword(it, Keyword.IF)
+        _ = Helper.eat_symbol(it, "(")
+        expr = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+        self.compile_expression(context, expr)
+        _ = Helper.eat_symbol(it, ")")
+        
+        # jump
+        self.writer.write_if(if_true_label)     # if-statement
+        self.writer.write_goto(if_false_label)  # else-statement
+
+        # if true statements
+        self.writer.write_label(if_true_label)
+        _ = Helper.eat_symbol(it, "{")
+        statements = Helper.eat_nonterminal(it, NonTerminalType.STATEMETNS)
+        self.compile_statements(context, statements)
+        self.writer.write_goto(if_end_label)
+        _ = Helper.eat_symbol(it, "}")
+
+        # else statement (optional)
+        self.writer.write_label(if_false_label)
+        if it.has_next():
+            _ = Helper.eat_keyword(it, Keyword.ELSE)
+            _ = Helper.eat_symbol(it, "{")
+            statements = Helper.eat_nonterminal(it, NonTerminalType.STATEMETNS)
+            self.compile_statements(context, statements)
+            _ = Helper.eat_symbol(it, "}")
+        # end label
+        self.writer.write_label(if_end_label)
 
     def compile_expression_list(self, context: Context, root: TreeNode):
         """<expression> (, <expression>)*
@@ -456,11 +508,14 @@ class CompilationEngine:
                 self.writer.write_push(segment, symbol.index)
     
     def compile_return_statement(self, context: Context, root: TreeNode):
+        it = root.get_iterator()
+        _ = Helper.eat_keyword(it)
         if context["return_type"] == "void":
             # push dummy
             self.writer.write_push(Segment.CONSTANT, 0)
         else:
-            raise NotImplementedError
+            expr = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+            self.compile_expression(context, expr)
         self.writer.write_return()
 
 
