@@ -85,6 +85,19 @@ class Helper:
         if not NonTerminalType.VAR_DEC.is_same(node.name):
             raise ValueError
         return sum(Helper.is_symbol(c, ",") for c in node.children) + 1
+    
+    @classmethod
+    def symbol_kind_to_segment(cls, kind: SymbolKind) -> Segment:
+        if kind == SymbolKind.VAR:
+            return Segment.LOCAL
+        elif kind == SymbolKind.FIELD:
+            return Segment.THIS
+        elif kind == SymbolKind.STATIC:
+            return Segment.STATIC
+        elif kind == SymbolKind.ARG:
+            return Segment.ARGUMENT
+        else:
+            raise ValueError
 
 
 class Context(dict):
@@ -95,6 +108,10 @@ class Context(dict):
         super().__init__()
         self.global_symbols = SymbolTable()
         self.local_symbols = SymbolTable()
+        self.label_count = {
+            Keyword.IF: 0,
+            Keyword.WHILE: 0
+        }
     
     def clear_local_symbols(self):
         self.local_symbols = SymbolTable()
@@ -111,6 +128,12 @@ class Context(dict):
 
     def nlocals(self):
         return len(self.local_symbols.table)
+    
+    def next_label_count(self, keyword: Keyword):
+        res = self.label_count[keyword]
+        self.label_count[keyword] += 1
+        return res
+    
 
 class CompilationEngine:
 
@@ -153,6 +176,7 @@ class CompilationEngine:
             <statements>
         }
         """
+        context.clear_local_symbols()
         it = root.get_iterator()
         # expect 'constructor', 'function' or 'method
         node = Helper.eat_keyword(it)
@@ -169,6 +193,7 @@ class CompilationEngine:
         # parameters
         parametert_list = Helper.eat_nonterminal(it, NonTerminalType.PARAMETER_LIST)
         nargs = Helper.parameter_size(parametert_list)
+        self.compile_parameter_list(context, parametert_list)
 
         # skip symbol
         _ = Helper.eat_symbol(it, ")")
@@ -206,6 +231,20 @@ class CompilationEngine:
 
         self.compile_statements(context, node)
         _ = Helper.eat_symbol(it)
+    
+    def compile_parameter_list(self, context, root: TreeNode):
+        """define arguments in local symbol table
+        int x, int y
+        """
+        it = root.get_iterator()
+        while it.has_next():
+            type = Helper.eat(it).token
+            name = Helper.eat(it).token
+            context.local_symbols.define(name, type, SymbolKind.ARG)
+            if it.has_next():
+                _ = Helper.eat_symbol(it, ",")
+            else:
+                break
 
     def compile_var_decl(self, context: Context, root: TreeNode):
         """
@@ -234,6 +273,8 @@ class CompilationEngine:
                 self.compile_return_statement(context, statement)
             elif NonTerminalType.LET_STATEMENT.is_same(statement.name):
                 self.compile_let_statement(context, statement)
+            elif NonTerminalType.WHILE_STATEMENT.is_same(statement.name):
+                self.compile_while_statement(context, statement)
             else:
                 print(statement.name)
                 # raise NotImplementedError(statement.name)
@@ -296,15 +337,39 @@ class CompilationEngine:
         self.compile_expression(context, expression)
         # pop the stack top to the variable
         symbol = context.lookup_symbol(name)
-        if symbol.kind == SymbolKind.VAR:
-            self.writer.write_pop(Segment.LOCAL, symbol.index)
-        elif symbol.kind == SymbolKind.FIELD:
-            self.writer.write_pop(Segment.THIS, symbol.index)
-        elif symbol.kind == SymbolKind.STATIC:
-            self.writer.write_pop(Segment.STATIC, symbol.index)
-        else:
-            raise NotImplementedError
+        segment = Helper.symbol_kind_to_segment(symbol.kind)
+        self.writer.write_pop(segment, symbol.index)
     
+    def compile_while_statement(self, context:Context, root: TreeNode):
+        it = root.get_iterator()
+
+        label_count = context.next_label_count(Keyword.WHILE)
+        exp_label = f"WHILE_EXP{label_count}"
+        end_label = f"WHILE_END{label_count}"
+
+        self.writer.write_label(exp_label)
+        _ = Helper.eat_keyword(it, Keyword.WHILE)
+
+        # expression
+        _ = Helper.eat_symbol(it, "(")
+        expression = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+        self.compile_expression(context, expression)
+        _ = Helper.eat_symbol(it, ")")
+
+        # check end condition
+        self.writer.write_arithmetic(ArithmeticCommand.NOT)
+        self.writer.write_if(end_label)
+
+        # statements
+        _ = Helper.eat_symbol(it, "{")
+        statements = Helper.eat_nonterminal(it, NonTerminalType.STATEMETNS)
+        self.compile_statements(context, statements)
+        # loop top
+        self.writer.write_goto(exp_label)
+        _ = Helper.eat_symbol(it, "}")
+
+        self.writer.write_label(end_label)
+
     def compile_expression_list(self, context: Context, root: TreeNode):
         """<expression> (, <expression>)*
         """
@@ -342,9 +407,12 @@ class CompilationEngine:
             elif symbol.token == "/":
                 self.writer.write_call("Math.divide", 2)
             else:
-                cmd = ArithmeticCommand.from_symbol(symbol.token)
+                # to avoid confusion with neg
+                if symbol.token == "-":
+                    cmd = ArithmeticCommand.SUB
+                else:
+                    cmd = ArithmeticCommand.from_symbol(symbol.token)
                 self.writer.write_arithmetic(cmd)
-                
 
     def compile_term(self, context: Context, root: TreeNode):
         """
@@ -384,16 +452,8 @@ class CompilationEngine:
             else:
                 name = node.token
                 symbol = context.lookup_symbol(name)
-                if symbol.kind == SymbolKind.VAR:
-                    self.writer.write_push(Segment.LOCAL, symbol.index)
-                elif symbol.kind == SymbolKind.STATIC:
-                    self.writer.write_push(Segment.STATIC, symbol.index)
-                elif symbol.kind == SymbolKind.FIELD:
-                    self.writer.write_push(Segment.THIS, symbol.index)
-                else:
-                    raise NotImplementedError
-            # print(node)
-            # raise NotImplementedError
+                segment = Helper.symbol_kind_to_segment(symbol.kind)
+                self.writer.write_push(segment, symbol.index)
     
     def compile_return_statement(self, context: Context, root: TreeNode):
         if context["return_type"] == "void":
