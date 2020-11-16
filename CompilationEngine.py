@@ -161,7 +161,13 @@ class CompilationEngine:
         # TODO constructor
         # TODO method
         while it.has_next():
-            node = next(it)
+            node = Helper.eat(it)
+
+            # class variables
+            if Helper.is_nonterminal(node, NonTerminalType.CLASS_VAR_DEC):
+                self.compile_class_var_decl(context, node)
+                continue
+
             if Helper.is_symbol(node, "}"):
                 break
             # print(node.name)
@@ -245,25 +251,30 @@ class CompilationEngine:
                 _ = Helper.eat_symbol(it, ",")
             else:
                 break
+        
+    def process_variable_decl(self, root: TreeNode, table: SymbolTable, kind: SymbolKind):
+        it = root.get_iterator()
+        _ = Helper.eat_keyword(it)
+        type = Helper.eat(it).token
+        # name
+        while it.has_next():
+            name = Helper.eat_identifier(it).token
+            table.define(name, type, kind)
+
+            symbol = Helper.eat_symbol(it)
+            if symbol.token == ";":
+                break
+    
+    def compile_class_var_decl(self, context: Context, root: TreeNode):
+        # TODO static variable:
+        self.process_variable_decl(root, context.global_symbols, SymbolKind.FIELD)
 
     def compile_var_decl(self, context: Context, root: TreeNode):
         """
         var int x, y;
         var Foo foo;
         """
-        it = root.get_iterator()
-        # var
-        _ = Helper.eat_keyword(it, Keyword.VAR)
-        # type
-        type = Helper.eat(it).token
-        # name
-        while it.has_next():
-            name = Helper.eat_identifier(it).token
-            context.local_symbols.define(name, type, SymbolKind.VAR)
-
-            symbol = Helper.eat_symbol(it)
-            if symbol.token == ";":
-                break
+        self.process_variable_decl(root, context.local_symbols, SymbolKind.VAR)
     
     def compile_statements(self, context: Context, root: TreeNode):
         for statement in root.loop_children():
@@ -288,6 +299,7 @@ class CompilationEngine:
 
         # local variable's method
         push_this = False
+        eat_left_paren = True
         if context.local_symbols.has_name(identifier.token):
             name = identifier.token
             symbol = context.local_symbols.get(name)
@@ -312,9 +324,17 @@ class CompilationEngine:
             # static function call
             if Helper.is_symbol(node, "."):
                 function_name = f"{identifier.token}.{Helper.eat_identifier(it).token}"
+            # method call
             else:
-                raise NotImplementedError
-        _ = Helper.eat_symbol(it, "(")
+                method_name = identifier.token
+                function_name = f"{context['class']}.{method_name}"
+
+                # push THIS as the first arugment
+                self.writer.write_push(Segment.POINTER, 0)
+                push_this = True
+                eat_left_paren = False
+        if eat_left_paren:
+            _ = Helper.eat_symbol(it, "(")
         # parse expression list
         expression_list = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION_LIST)
         self.compile_expression_list(context, expression_list)

@@ -43,6 +43,7 @@ class Segment(StringEnum):
     THAT = "that"
     TEMP = "temp"
     STATIC = "static"
+    POINTER = "pointer"
 
 
 class ArithmeticCommand(StringEnum):
