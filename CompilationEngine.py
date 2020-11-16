@@ -485,6 +485,10 @@ class CompilationEngine:
             term = Helper.eat_nonterminal(it, NonTerminalType.TERM)
             self.compile_term(context, term)
             self.writer.write_arithmetic(ArithmeticCommand.NEG)
+        elif Helper.is_symbol(node, "~"):
+            term = Helper.eat_nonterminal(it, NonTerminalType.TERM)
+            self.compile_term(context, term)
+            self.writer.write_arithmetic(ArithmeticCommand.NOT)
         # boolean
         elif Helper.is_keyword(node, Keyword.TRUE):
             # push -1
