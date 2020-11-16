@@ -135,6 +135,10 @@ class Context(dict):
         self.label_count[keyword] += 1
         return res
     
+    def clear_label_count(self):
+        for k in self.label_count:
+            self.label_count[k] = 0
+    
 
 class CompilationEngine:
 
@@ -185,7 +189,10 @@ class CompilationEngine:
             <statements>
         }
         """
+        # clear context
         context.clear_local_symbols()
+        context.clear_label_count()
+
         it = root.get_iterator()
         # expect 'constructor', 'function' or 'method
         node = Helper.eat_keyword(it)
@@ -481,7 +488,7 @@ class CompilationEngine:
             self.writer.write_if(if_true_label)     # if-statement
             self.writer.write_goto(if_false_label)  # else-statement
             # true
-            self.writer.write_label(if_false_label)
+            self.writer.write_label(if_true_label)
             self.compile_statements(context, true_statements)
             self.writer.write_label(if_false_label)
 
@@ -559,6 +566,9 @@ class CompilationEngine:
             self.writer.write_arithmetic(ArithmeticCommand.NOT)
         elif Helper.is_keyword(node, Keyword.FALSE):
             self.writer.write_push(Segment.CONSTANT, 0)
+        # this
+        elif Helper.is_keyword(node, Keyword.THIS):
+            self.writer.write_push(Segment.POINTER, 0)
         # expression enclosed by parentheses
         elif Helper.is_symbol(node, "("):
             expression = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
@@ -573,6 +583,8 @@ class CompilationEngine:
                 symbol = context.lookup_symbol(name)
                 segment = Helper.symbol_kind_to_segment(symbol.kind)
                 self.writer.write_push(segment, symbol.index)
+        else:
+            print("term not defined: ", root)
     
     def compile_return_statement(self, context: Context, root: TreeNode):
         it = root.get_iterator()
