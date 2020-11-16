@@ -38,16 +38,10 @@ class SymbolTable:
         index = self.counter[kind]
         self.counter[kind] += 1
         self.table[name] = Symbol(name, type, kind, index)
+    
+    def get(self, name: str) -> Symbol:
+        return self.table[name]
 
-    def kind_of(self, name: str) -> SymbolKind:
-        return self.table.get(name, SymbolKind.UNKNOWN)
-    
-    def type_of(self, name: str) -> str:
-        return self.table.get(name, "")
-    
-    def index_of(self, name: str) -> int:
-        return self.table.get(name, -1)
-    
     def has_name(self, name: str) -> bool:
         return name in self.table
     

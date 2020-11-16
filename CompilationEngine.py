@@ -282,13 +282,29 @@ class CompilationEngine:
                 # raise NotImplementedError(statement.name)
 
     def compile_call(self, context: Context, it: Iterator[TreeNode]):
+        """to be called by do-statement or let-statement
+        """
         identifier = Helper.eat_identifier(it)
 
         # local variable's method
+        push_this = False
         if context.local_symbols.has_name(identifier.token):
-            raise NotImplementedError
+            name = identifier.token
+            symbol = context.local_symbols.get(name)
+
+            _ = Helper.eat_symbol(it, ".")
+
+            # function name
+            type = symbol.type
+            method_name = Helper.eat_identifier(it).token
+            function_name = f"{type}.{method_name}"
+
+            # push the variable as the first arugment
+            segment = Helper.symbol_kind_to_segment(symbol.kind)
+            self.writer.write_push(segment, symbol.index)
+            push_this = True
         # static variable's method?
-        if context.global_symbols.has_name(identifier.token):
+        elif context.global_symbols.has_name(identifier.token):
             raise NotImplementedError
         # static function or method call
         else:
@@ -302,10 +318,11 @@ class CompilationEngine:
         # parse expression list
         expression_list = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION_LIST)
         self.compile_expression_list(context, expression_list)
+
         _ = Helper.eat_symbol(it, ")")
 
         # call function
-        nargs = Helper.expression_size(expression_list)
+        nargs = Helper.expression_size(expression_list) + push_this
         self.writer.write_call(function_name, nargs)
 
     def compile_do_statement(self, context: Context, root: TreeNode):
@@ -531,7 +548,7 @@ def main():
     input_file = open(input_filename, "r")
     tokenizer = JackTokenizer(input_file)
 
-    output_filename = input_filename.replace(".jack", ".mine.vm")
+    output_filename = input_filename.replace(".jack", ".vm")
     output_file = open(output_filename, "w")
     # output_file = sys.stdout
     writer = VMWriter(output_file)
@@ -553,12 +570,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-    
-            
-
-
-
-
