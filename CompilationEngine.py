@@ -22,7 +22,7 @@ class Helper:
         if expected is None:
             return type_ok
         else:
-            return type_ok and expected.is_same(node.name)
+            return type_ok and expected.is_same(node.token)
         
     @classmethod
     def is_nonterminal(cls, node: TreeNode, expected: NonTerminalType=None) -> bool:
@@ -79,6 +79,13 @@ class Helper:
         if not NonTerminalType.EXPRESSION_LIST.is_same(node.name):
             raise ValueError
         return len([c for c in node.children if NonTerminalType.EXPRESSION.is_same(c.name)])
+    
+    @classmethod
+    def nlocals(cls, node: TreeNode) -> int:
+        if not NonTerminalType.VAR_DEC.is_same(node.name):
+            raise ValueError
+        return sum(Helper.is_symbol(c, ",") for c in node.children) + 1
+
 
 class Context(dict):
     """able to put any data
@@ -101,6 +108,9 @@ class Context(dict):
             return self.global_symbols.table[name]
         else:
             raise KeyError(f"undefined variable {name}")
+
+    def nlocals(self):
+        return len(self.local_symbols.table)
 
 class CompilationEngine:
 
@@ -129,9 +139,10 @@ class CompilationEngine:
         # TODO method
         while it.has_next():
             node = next(it)
+            if Helper.is_symbol(node, "}"):
+                break
             # print(node.name)
             self.compile_subroutine(context, node)
-            break
         # }
     
     def compile_subroutine(self, context: Context, root: TreeNode):
@@ -162,16 +173,16 @@ class CompilationEngine:
         # skip symbol
         _ = Helper.eat_symbol(it, ")")
 
-        # compile function name
-        self.writer.write_functions(function_name, nargs)
-
-        # TODO push arguments 
+        # 'function' instruction needs the number of local variables.
+        # delegate it to compiler of subroutine body.
+        context["function_name"] = function_name
 
         # subroutine body
         body = Helper.eat_nonterminal(it, NonTerminalType.SUBROUTINE_BODY)
         self.compile_subroutine_body(context, body)
         
         # moved out of function. remove it!
+        del context["function_name"]
         del context["return_type"]
         context.clear_local_symbols()
     
@@ -179,18 +190,23 @@ class CompilationEngine:
         it = root.get_iterator()
         _ = Helper.eat_symbol(it, "{")
 
+        # variables
+        variables = []
+        nlocals = 0
         while it.has_next():
             node = Helper.eat(it) 
-            if Helper.is_symbol(node, "}"):
+            if not NonTerminalType.VAR_DEC.is_same(node.name):
                 break
-            if NonTerminalType.STATEMETNS.is_same(node.name):
-                self.compile_statements(context, node)
-            elif NonTerminalType.VAR_DEC.is_same(node.name):
-                self.compile_var_decl(context, node)
-            else:
-                print(node)
-                # raise SyntaxError("Unexpected {node.name}")
-    
+            variables.append(node)
+            nlocals += Helper.nlocals(node)
+        
+        self.writer.write_functions(context["function_name"], nlocals)
+        for var in variables:
+            self.compile_var_decl(context, var)
+
+        self.compile_statements(context, node)
+        _ = Helper.eat_symbol(it)
+
     def compile_var_decl(self, context: Context, root: TreeNode):
         """
         var int x, y;
@@ -349,6 +365,13 @@ class CompilationEngine:
             term = Helper.eat_nonterminal(it, NonTerminalType.TERM)
             self.compile_term(context, term)
             self.writer.write_arithmetic(ArithmeticCommand.NEG)
+        # boolean
+        elif Helper.is_keyword(node, Keyword.TRUE):
+            # push -1
+            self.writer.write_push(Segment.CONSTANT, 0)
+            self.writer.write_arithmetic(ArithmeticCommand.NOT)
+        elif Helper.is_keyword(node, Keyword.FALSE):
+            self.writer.write_push(Segment.CONSTANT, 0)
         # expression enclosed by parentheses
         elif Helper.is_symbol(node, "("):
             expression = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
