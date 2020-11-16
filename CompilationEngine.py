@@ -320,12 +320,16 @@ class CompilationEngine:
         """
         identifier = Helper.eat_identifier(it)
 
-        # local variable's method
         push_this = False
         eat_left_paren = True
-        if context.local_symbols.has_name(identifier.token):
+
+        # variable's method
+        if context.local_symbols.has_name(identifier.token) or context.global_symbols.has_name(identifier.token):
             name = identifier.token
-            symbol = context.local_symbols.get(name)
+            if context.local_symbols.has_name(name):
+                symbol = context.local_symbols.get(name)
+            else:
+                symbol = context.global_symbols.get(name)
 
             _ = Helper.eat_symbol(it, ".")
 
@@ -338,9 +342,6 @@ class CompilationEngine:
             segment = Helper.symbol_kind_to_segment(symbol.kind)
             self.writer.write_push(segment, symbol.index)
             push_this = True
-        # static variable's method?
-        elif context.global_symbols.has_name(identifier.token):
-            raise NotImplementedError
         # static function or method call
         else:
             node = next(it)
