@@ -80,6 +80,11 @@ class TreeNodeIterator:
     
     def has_next(self) -> bool:
         return self.idx < len(self.nodes)
+    
+    def current_value(self) -> TreeNode:
+        """returns the current value without moving to next
+        """
+        return self.nodes[self.idx]
 
 
 class TerminalNode(TreeNode):

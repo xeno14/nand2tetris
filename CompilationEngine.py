@@ -81,10 +81,11 @@ class Helper:
         return len([c for c in node.children if NonTerminalType.EXPRESSION.is_same(c.name)])
     
     @classmethod
-    def nlocals(cls, node: TreeNode) -> int:
-        if not NonTerminalType.VAR_DEC.is_same(node.name):
+    def count_variables(cls, node: TreeNode) -> int:
+        if NonTerminalType.VAR_DEC.is_same(node.name) or NonTerminalType.CLASS_VAR_DEC.is_same(node.name):
+            return sum(Helper.is_symbol(c, ",") for c in node.children) + 1
+        else:
             raise ValueError
-        return sum(Helper.is_symbol(c, ",") for c in node.children) + 1
     
     @classmethod
     def symbol_kind_to_segment(cls, kind: SymbolKind) -> Segment:
@@ -153,18 +154,20 @@ class CompilationEngine:
         # class name
         node = Helper.eat_identifier(it)
         context["class"] = node.token
+        context["nfields"] = 0
         # {
         _ = Helper.eat_symbol(it, "{")
 
-        # TODO field
         # TODO static
         # TODO constructor
         # TODO method
+
         while it.has_next():
             node = Helper.eat(it)
 
             # class variables
             if Helper.is_nonterminal(node, NonTerminalType.CLASS_VAR_DEC):
+                context["nfields"] += Helper.count_variables(node)
                 self.compile_class_var_decl(context, node)
                 continue
 
@@ -187,6 +190,7 @@ class CompilationEngine:
         # expect 'constructor', 'function' or 'method
         node = Helper.eat_keyword(it)
         function_type = Keyword.from_str(node.token)
+        context['function_type'] = function_type
 
         return_type: TreeNode = Helper.eat(it)
         context["return_type"] = return_type.token
@@ -214,6 +218,7 @@ class CompilationEngine:
         
         # moved out of function. remove it!
         del context["function_name"]
+        del context["function_type"]
         del context["return_type"]
         context.clear_local_symbols()
     
@@ -229,9 +234,16 @@ class CompilationEngine:
             if not NonTerminalType.VAR_DEC.is_same(node.name):
                 break
             variables.append(node)
-            nlocals += Helper.nlocals(node)
+            nlocals += Helper.count_variables(node)
         
         self.writer.write_functions(context["function_name"], nlocals)
+
+        if context["function_type"] == Keyword.CONSTRUCTOR:
+            nfields = context["nfields"]
+            self.writer.write_push(Segment.CONSTANT, nfields)
+            self.writer.write_call("Memory.alloc", 1)
+            self.writer.write_pop(Segment.POINTER, 0)
+
         for var in variables:
             self.compile_var_decl(context, var)
 
@@ -554,6 +566,12 @@ class CompilationEngine:
         if context["return_type"] == "void":
             # push dummy
             self.writer.write_push(Segment.CONSTANT, 0)
+        elif context["function_type"] == Keyword.CONSTRUCTOR:
+            # expect return this;
+            expr = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+            term = Helper.eat_nonterminal(expr.get_iterator(), NonTerminalType.TERM)
+            _ = Helper.eat_keyword(term.get_iterator(), Keyword.THIS)
+            self.writer.write_push(Segment.POINTER, 0)
         else:
             expr = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
             self.compile_expression(context, expr)
