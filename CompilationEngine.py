@@ -1,543 +1,731 @@
-from JackTokenizer import JackTokenizer, TokenType, Keyword, StringEnum
-from typing import List, Tuple
-import io
+from ParseTree import TreeNode, TreeNodeIterator
+from VMWriter import VMWriter
+from constants import *
+from SymbolTable import SymbolTable, Symbol
+
+from typing import *
 
 
-class NonTerminalType(StringEnum):
+class Helper:
 
-    CLASS = "class"
-    CLASS_VAR_DEC = "classVarDec"
-    SUBROUTINE_DEC = "subroutineDec"
-    PARAMETER_LIST = "parameterList"
-    SUBROUTINE_BODY = "subroutineBody"
-    VAR_DEC = "varDec"
-    STATEMETNS = "statements"
-    LET_STATEMENT = "letStatement"
-    IF_STATEMENT = "ifStatement"
-    WHILE_STATEMENT = "whileStatement"
-    DO_STATEMENT = "doStatement"
-    RETURN_STATEMENT = "returnStatement"
-    EXPRESSION = "expression"
-    TERM = "term"
-    EXPRESSION_LIST = "expressionList"
+    @classmethod
+    def is_token(self, node: TreeNode, expected_token_type: TokenType, expected_token: str=None) -> bool:
+        type_ok = node.token_type == expected_token_type
+        if expected_token is None:
+            return type_ok
+        else:
+            return type_ok and expected_token == node.token
 
-
-class TreeNode:
-
-    def __init__(self, token_type: TokenType, token: str="", children: List["TreeNode"]=None):
-        if children is None:
-            children = []
-        self.children = children
-        self.token_type = token_type
-        self.token = token
-
-    @property
-    def name(self):
-        return self.token_type.value
+    @classmethod
+    def is_keyword(cls, node: TreeNode, expected: Keyword=None) -> bool:
+        type_ok = node.token_type == TokenType.KEYWORD
+        if expected is None:
+            return type_ok
+        else:
+            return type_ok and expected.is_same(node.token)
+        
+    @classmethod
+    def is_nonterminal(cls, node: TreeNode, expected: NonTerminalType=None) -> bool:
+        if expected is None:
+            return not node.is_terminal()
+        else:
+            return not node.is_terminal() and expected.is_same(node.name)
     
-    def is_leaf(self):
-        return len(self.children) == 0
+    @classmethod
+    def is_symbol(cls, node: TreeNode, expected: str=None) -> bool:
+        return cls.is_token(node, TokenType.SYMBOL, expected)
+
+    @classmethod
+    def is_identifier(cls, node: TreeNode) -> bool:
+        return cls.is_token(node, TokenType.IDENTIFIER)
+
+    @classmethod
+    def eat(cls, it: Iterator[TreeNode], expected_token_type: TokenType=None,
+            expected_token: str=None):
+        node = next(it)
+        if expected_token_type is not None and expected_token_type != node.token_type:
+            raise SyntaxError(f"expected token type {expected_token_type} but got {node.token_type}")
+        if expected_token is not None and expected_token != node.token:
+            raise SyntaxError(f"expected token {expected_token} but got {node.token}")
+        return node
+
+    @classmethod
+    def eat_keyword(cls, it: Iterator[TreeNode], keyword: Keyword=None) -> TreeNode:
+        return cls.eat(it, TokenType.KEYWORD, keyword.value if keyword is not None else None)
+
+    @classmethod
+    def eat_identifier(cls, it: Iterator[TreeNode]) -> TreeNode:
+        return cls.eat(it, TokenType.IDENTIFIER)
     
-    def has_child(self):
-        return not self.is_leaf()
+    @classmethod
+    def eat_symbol(cls, it: Iterator[TreeNode], symbol: str=None) -> TreeNode:
+        return cls.eat(it, TokenType.SYMBOL, symbol)
     
-    def add(self, *childlen):
-        for child in childlen:
-            self.children.append(child)
+    @classmethod
+    def eat_nonterminal(cls, it: Iterator[TreeNode], expected_type: NonTerminalType=None) -> TreeNode:
+        node = cls.eat(it, TokenType.NONTERMINAL)
+        if expected_type is not None and not expected_type.is_same(node.name):
+            raise SyntaxError(f"expected '{expected_type.value}' but got '{node.name}'")
+        return node
     
-    def to_xml(self, fout, depth=0):
-        raise NotImplementedError
+    @classmethod
+    def parameter_size(cls, node: TreeNode) -> int:
+        if not NonTerminalType.PARAMETER_LIST.is_same(node.name):
+            raise ValueError
+        return len([c for c in node.children if c.token_type == TokenType.IDENTIFIER])
 
-    def __repr__(self):
-        return f"<{self.name}> {self.token} </{self.name}>"
-
-    def __str__(self):
-        with io.StringIO() as f:
-            self.to_xml(f)
-            return f.getvalue()
-
-
-class TerminalNode(TreeNode):
-
-    def __init__(self, token_type: TokenType, token: str):
-        super().__init__(token_type, token)
+    @classmethod
+    def expression_size(cls, node: TreeNode) -> int:
+        if not NonTerminalType.EXPRESSION_LIST.is_same(node.name):
+            raise ValueError
+        return len([c for c in node.children if NonTerminalType.EXPRESSION.is_same(c.name)])
     
-    def add(self):
-        raise NotImplementedError("never call 'add'")
-
-    def to_xml(self, fout, depth=0):
-        from xml.sax import saxutils
-        indent = "  " * depth
-        tag = f"<{self.name}> {saxutils.escape(self.token)} </{self.name}>"
-        fout.write(indent + tag + "\n")
+    @classmethod
+    def count_variables(cls, node: TreeNode) -> int:
+        if NonTerminalType.VAR_DEC.is_same(node.name) or NonTerminalType.CLASS_VAR_DEC.is_same(node.name):
+            return sum(Helper.is_symbol(c, ",") for c in node.children) + 1
+        else:
+            raise ValueError
+        jo
+    @classmethod
+    def count_fields(cls, node: TreeNode) -> int:
+        if NonTerminalType.CLASS_VAR_DEC.is_same(node.name):
+            it = node.get_iterator()
+            k = Helper.eat_keyword(it)
+            if Helper.is_keyword(k, Keyword.FIELD):
+                return cls.count_variables(node)
+            else:
+                return 0
+        else:
+            raise ValueError
     
+    @classmethod
+    def symbol_kind_to_segment(cls, kind: SymbolKind) -> Segment:
+        if kind == SymbolKind.VAR:
+            return Segment.LOCAL
+        elif kind == SymbolKind.FIELD:
+            return Segment.THIS
+        elif kind == SymbolKind.STATIC:
+            return Segment.STATIC
+        elif kind == SymbolKind.ARG:
+            return Segment.ARGUMENT
+        else:
+            raise ValueError
 
-class NonTerminalNode(TreeNode):
 
-    def __init__(self, nodetype: NonTerminalType):
-        super().__init__(TokenType.NONTERMINAL, nodetype.value)
-        self._nodetype = nodetype
+class Context(dict):
+    """able to put any data
+    """
 
-    @property
-    def nodetype(self) -> NonTerminalType:
-        return self._nodetype
-
-    @property
-    def name(self) -> str:
-        return self.nodetype.value
-
-    def to_xml(self, fout, depth=0):
-        indent = "  " * depth
-        opentag = f"<{self.name}>"
-        closetag = f"</{self.name}>"
-        fout.write(indent + opentag + "\n")
-        for child in self.children:
-            child.to_xml(fout, depth+1)
-        fout.write(indent + closetag + "\n")
+    def __init__(self):
+        super().__init__()
+        self.global_symbols = SymbolTable()
+        self.local_symbols = SymbolTable()
+        self.label_count = {
+            Keyword.IF: 0,
+            Keyword.WHILE: 0
+        }
     
-    def add_symbol(self, symbol: str):
-        assert symbol in JackTokenizer.SYMBOLS
-        self.add(
-            TerminalNode(TokenType.SYMBOL, symbol)
-        )
+    def clear_local_symbols(self):
+        self.local_symbols = SymbolTable()
+    
+    def lookup_symbol(self, name: str) -> Optional[Symbol]:
+        """look up a symbol in local then global
+        """
+        if name in self.local_symbols.table:
+            symbol = self.local_symbols.table[name]
+        elif name in self.global_symbols.table:
+            symbol = self.global_symbols.table[name]
+        else:
+            return None
+        # increment index by 1 for ARG if the context is method
+        if symbol.kind == SymbolKind.ARG:
+            index = symbol.index
+            func_type = self.get("function_type", None)
+            if func_type == Keyword.METHOD:
+                index += 1
+            return Symbol(name=symbol.name, type=symbol.type, kind=symbol.kind, index=index)
+        else:
+            return symbol
 
+    def nlocals(self):
+        return len(self.local_symbols.table)
+    
+    def next_label_count(self, keyword: Keyword):
+        res = self.label_count[keyword]
+        self.label_count[keyword] += 1
+        return res
+    
+    def clear_label_count(self):
+        for k in self.label_count:
+            self.label_count[k] = 0
+    
 
 class CompilationEngine:
 
-    def __init__(self, tokenizer: JackTokenizer, fout):
-        self.tokenizer = tokenizer
-        self.fout = fout
-        self.tokenizer.advance()
-        self.root: TreeNode = None
-        self.depth = 0
+    def __init__(self, writer: VMWriter):
+        self.writer = writer
+        self.namespace = ""
 
-    def eat(self) -> Tuple[TokenType, str]:
-        """returns the current token and advance
-        """
-        token_type = self.tokenizer.token_type()
-        token = self.tokenizer.token()
-        self.tokenizer.advance()
-        return token_type, token
+    def compile_class(self, root: TreeNode):
+        if not Helper.is_nonterminal(root, NonTerminalType.CLASS):
+            raise SyntaxError(f"expect 'class' but got '{root.name}'")
     
-    def write(self):
-        self.root.to_xml(self.fout)
+        context = Context()
 
-    # ----------------------------------------------------------------
-    # eat functions to build TreeNode
-    # ----------------------------------------------------------------
-    def eat_terminal(self, expected_token_type: TokenType=None, expected_token: str="") -> TerminalNode:
-        token_type, token = self.eat()
-        if expected_token_type is not None:
-            assert token_type == expected_token_type
-        if expected_token:
-            assert token == expected_token
-        return TerminalNode(token_type=token_type, token=token)
-    
-    def eat_identifier(self):
-        return self.eat_terminal(TokenType.IDENTIFIER)
+        it = root.get_iterator()
+        # should be 'class' keyword
+        _ = Helper.eat_keyword(it, Keyword.CLASS)
+        # class name
+        node = Helper.eat_identifier(it)
+        context["class"] = node.token
+        context["nfields"] = 0
+        # {
+        _ = Helper.eat_symbol(it, "{")
 
-    def eat_keyword(self, keyword: Keyword=None) -> TerminalNode:
-        if keyword is None:
-            return self.eat_terminal(TokenType.KEYWORD)
-        else:
-            return self.eat_terminal(TokenType.KEYWORD, keyword.value)
+        # TODO static
+        # TODO constructor
+        # TODO method
 
-    def eat_symbol(self, symbol: str="") -> TerminalNode:
-        if not symbol == "":
-            assert symbol in JackTokenizer.SYMBOLS
-        return self.eat_terminal(TokenType.SYMBOL, symbol)
+        while it.has_next():
+            node = Helper.eat(it)
 
-    def is_symbol(self, expected_symbol: str="") -> bool:
-        type_ok = self.tokenizer.token_type() == TokenType.SYMBOL
-        if len(expected_symbol) == 0:
-            return type_ok
-        else:
-            return type_ok and self.tokenizer.symbol() == expected_symbol
-    
-    def is_keyword(self, expected_keyword: Keyword) -> bool:
-        return self.tokenizer.token_type() == TokenType.KEYWORD and self.tokenizer.keyword() == expected_keyword
-    
-    # ----------------------------------------------------------------
-    # functions to complie
-    # ----------------------------------------------------------------
-    def compile_class(self):
-        """jack file always starts with 'class' keyword
-        """
-        assert self.is_keyword(Keyword.CLASS)
-        self.root = NonTerminalNode(NonTerminalType.CLASS)
-        self.root.add(
-            self.eat_keyword(Keyword.CLASS),
-            self.eat_identifier(),
-            self.eat_symbol("{")
-        )
+            # class variables
+            if Helper.is_nonterminal(node, NonTerminalType.CLASS_VAR_DEC):
+                context["nfields"] += Helper.count_fields(node)
+                self.compile_class_var_decl(context, node)
+                continue
 
-        while self.tokenizer.has_more_tokens() and not self.is_symbol("}"):
-            # for class, expect keywords only
-            # classVarDec
-            if self.is_keyword(Keyword.FIELD) or self.is_keyword(Keyword.STATIC):
-                self.compile_class_var_dec(self.root)
-            elif self.is_keyword(Keyword.CONSTRUCTOR) or self.is_keyword(Keyword.METHOD) or self.is_keyword(Keyword.FUNCTION):
-                self.compile_subroutine(self.root)
-            else:
-                _ = self.eat()
-        self.root.add(
-            self.eat_symbol("}"))
-                
-    def compile_class_var_dec(self, parent: TreeNode):
-        """
-        field int x, y;
-        """
-        node = NonTerminalNode(NonTerminalType.CLASS_VAR_DEC)
-        node.add(
-            self.eat_keyword()
-        )
-        while self.tokenizer.has_more_tokens():
-            if self.is_symbol(";"):
-                node.add(
-                    self.eat_symbol(";")
-                )
+            if Helper.is_symbol(node, "}"):
                 break
-            # expect terminal nodes
-            token_type, token = self.eat()
-            child = TerminalNode(token_type, token)
-            node.add(child)
-        parent.add(node)
-
-    def compile_subroutine(self, parent: TreeNode):
+            # print(node.name)
+            self.compile_subroutine(context, node)
+        # }
+    
+    def compile_subroutine(self, context: Context, root: TreeNode):
         """
-        method void draw() {
-            do Screen.setColor(x);
-            do Screen.drawRectangle(x, y, x, y);
-            return;
+        <function_type> <function_name>
+        {
+            (<var statement>)*
+            <statements>
         }
         """
-        node = NonTerminalNode(NonTerminalType.SUBROUTINE_DEC)
-        node.add(
-            self.eat_keyword(),     # 'method' or 'constructor' or 'function'
-        )
-        # return type is an identifier or void (keyword)
-        if self.is_keyword(Keyword.VOID):
-            node.add(self.eat_keyword(Keyword.VOID))
-        else:
-            node.add(self.eat_identifier())
-        node.add(
-            self.eat_identifier(),  # function name
-            self.eat_symbol("(")
-        )
-        # parameter list
-        self.compile_parameter_list(node)
-        node.add(
-            self.eat_symbol(")")
-        )
+        # clear context
+        context.clear_local_symbols()
+        context.clear_label_count()
+
+        it = root.get_iterator()
+        # expect 'constructor', 'function' or 'method
+        node = Helper.eat_keyword(it)
+        function_type = Keyword.from_str(node.token)
+        context['function_type'] = function_type
+
+        return_type: TreeNode = Helper.eat(it)
+        context["return_type"] = return_type.token
+
+        function_name = f"{context['class']}.{Helper.eat_identifier(it).token}"
+        
+        # skip symbol
+        _ = Helper.eat_symbol(it, "(")
+
+        # parameters
+        parametert_list = Helper.eat_nonterminal(it, NonTerminalType.PARAMETER_LIST)
+        nargs = Helper.parameter_size(parametert_list)
+        self.compile_parameter_list(context, parametert_list)
+
+        # skip symbol
+        _ = Helper.eat_symbol(it, ")")
+
+        # 'function' instruction needs the number of local variables.
+        # delegate it to compiler of subroutine body.
+        context["function_name"] = function_name
 
         # subroutine body
-        body = NonTerminalNode(NonTerminalType.SUBROUTINE_BODY)
-        body.add(
-            self.eat_symbol("{")
-        )
-        # optinally variable declarations
-        while self.is_keyword(Keyword.VAR):
-            self.compile_var_dec(body)
-        # statement
-        self.compile_statements(body)
-        # end of body
-        body.add(
-            self.eat_symbol("}")
-        )
+        body = Helper.eat_nonterminal(it, NonTerminalType.SUBROUTINE_BODY)
+        self.compile_subroutine_body(context, body)
+        
+        # moved out of function. remove it!
+        del context["function_name"]
+        del context["function_type"]
+        del context["return_type"]
+        context.clear_local_symbols()
+    
+    def compile_subroutine_body(self, context: Context, root: TreeNode):
+        it = root.get_iterator()
+        _ = Helper.eat_symbol(it, "{")
 
-        node.add(body)
-        parent.add(node)
-    
-    def compile_parameter_list(self, parent: TreeNode):
-        """
-        ()
-        (int x, int y)
-        """
-        node = NonTerminalNode(NonTerminalType.PARAMETER_LIST)
-        while self.tokenizer.has_more_tokens():
-            if self.is_symbol(")"):
+        # variables
+        variables = []
+        nlocals = 0
+        while it.has_next():
+            node = Helper.eat(it) 
+            if not NonTerminalType.VAR_DEC.is_same(node.name):
                 break
-            # expect termianl expressions
-            token_type, token = self.eat()
-            child = TerminalNode(token_type, token)
-            node.add(child)
-        parent.add(node)
+            variables.append(node)
+            nlocals += Helper.count_variables(node)
+        
+        self.writer.write_functions(context["function_name"], nlocals)
+
+        if context["function_type"] == Keyword.CONSTRUCTOR:
+            nfields = context["nfields"]
+            self.writer.write_push(Segment.CONSTANT, nfields)
+            self.writer.write_call("Memory.alloc", 1)
+            self.writer.write_pop(Segment.POINTER, 0)
+        elif context["function_type"] == Keyword.METHOD:
+            # push the first arugment = this to pointer 0
+            self.writer.write_push(Segment.ARGUMENT, 0)
+            self.writer.write_pop(Segment.POINTER, 0)
+
+        for var in variables:
+            self.compile_var_decl(context, var)
+
+        self.compile_statements(context, node)
+        _ = Helper.eat_symbol(it)
     
-    def compile_statements(self, parent: TreeNode):
+    def compile_parameter_list(self, context, root: TreeNode):
+        """define arguments in local symbol table
+        int x, int y
         """
-        var int a;
-        let a = 1;
-        """
-        node = NonTerminalNode(NonTerminalType.STATEMETNS)
-        while self.tokenizer.has_more_tokens():
-            if self.is_symbol("}"):
-                break
-            # let, do, return, if, while
-            if self.is_keyword(Keyword.LET):
-                self.compile_let(node)
-            elif self.is_keyword(Keyword.DO):
-                self.compile_do(node)
-            elif self.is_keyword(Keyword.RETURN):
-                self.compile_return(node)
-            elif self.is_keyword(Keyword.IF):
-                self.compile_if_statement(node)
-            elif self.is_keyword(Keyword.WHILE):
-                self.compile_while_statement(node)
+        it = root.get_iterator()
+        while it.has_next():
+            type = Helper.eat(it).token
+            name = Helper.eat(it).token
+            context.local_symbols.define(name, type, SymbolKind.ARG)
+            if it.has_next():
+                _ = Helper.eat_symbol(it, ",")
             else:
-                print(f"ignoring {self.eat()}")
-        parent.add(node)
+                break
+        
+    def process_variable_decl(self, root: TreeNode, table: SymbolTable, kind: SymbolKind):
+        it = root.get_iterator()
+        _ = Helper.eat_keyword(it)
+        type = Helper.eat(it).token
+        # name
+        while it.has_next():
+            name = Helper.eat_identifier(it).token
+            table.define(name, type, kind)
+
+            symbol = Helper.eat_symbol(it)
+            if symbol.token == ";":
+                break
     
-    def compile_var_dec(self, parent: TreeNode):
+    def compile_class_var_decl(self, context: Context, root: TreeNode):
+        it = root.get_iterator()
+        kwd = Helper.eat_keyword(it)
+        if Helper.is_keyword(kwd, Keyword.FIELD):
+            self.process_variable_decl(root, context.global_symbols, SymbolKind.FIELD)
+        elif Helper.is_keyword(kwd, Keyword.STATIC):
+            self.process_variable_decl(root, context.global_symbols, SymbolKind.STATIC)
+        else:
+            raise ValueError
+
+    def compile_var_decl(self, context: Context, root: TreeNode):
         """
         var int x, y;
-        var int x;
+        var Foo foo;
         """
-        node = NonTerminalNode(NonTerminalType.VAR_DEC)
-        node.add(
-            self.eat_keyword(Keyword.VAR),  # var
-            self.eat_terminal()             # type can be keyword or identifier
-        )
-        while self.tokenizer.has_more_tokens():
-            node.add(self.eat_identifier())
-            if self.is_symbol(";"):
-                break
-            elif self.is_symbol(","):
-                node.add(self.eat_symbol(","))
-            else:
-                raise SyntaxError(self.tokenizer.current_line())
-        node.add(self.eat_symbol(";"))
-        parent.add(node)
+        self.process_variable_decl(root, context.local_symbols, SymbolKind.VAR)
     
-    def compile_let(self, parent: TreeNode):
-        """
-        let <lhs> = <expression>
+    def compile_statements(self, context: Context, root: TreeNode):
+        for statement in root.loop_children():
+            if NonTerminalType.DO_STATEMENT.is_same(statement.name):
+                self.compile_do_statement(context, statement)
+            elif NonTerminalType.RETURN_STATEMENT.is_same(statement.name):
+                self.compile_return_statement(context, statement)
+            elif NonTerminalType.LET_STATEMENT.is_same(statement.name):
+                self.compile_let_statement(context, statement)
+            elif NonTerminalType.WHILE_STATEMENT.is_same(statement.name):
+                self.compile_while_statement(context, statement)
+            elif NonTerminalType.IF_STATEMENT.is_same(statement.name):
+                self.compile_if_statement(context, statement)
+            else:
+                print(statement.name)
+                # raise NotImplementedError(statement.name)
 
-        let a = 1;
-        let a[i] = foo;
-        let a = Foo.bar();
+    def compile_call(self, context: Context, it: Iterator[TreeNode]):
+        """to be called by do-statement or let-statement
         """
-        # let <identifier>
-        node = NonTerminalNode(NonTerminalType.LET_STATEMENT)
-        node.add(
-            self.eat_keyword(Keyword.LET),
-            self.eat_identifier()
-        )
-        # can be array
-        if self.is_symbol("["):
-            node.add(self.eat_symbol("["))
-            self.compile_expression(node)
-            node.add(self.eat_symbol("]"))
+        identifier = Helper.eat_identifier(it)
 
-        # =
-        node.add(
-            self.eat_symbol("="),
-        )
-        # rhs is expression
-        self.compile_expression(node)
-        node.add(self.eat_symbol(";"))
-        parent.add(node)
+        push_this = False
+        eat_left_paren = True
 
-    def compile_do(self, parent: TreeNode):
-        """
-        do foo(<ExpressionList>)
-        do Output.printInt(<ExpressionList>)
-        """
-        node = NonTerminalNode(NonTerminalType.DO_STATEMENT)
-        node.add(
-            self.eat_keyword(Keyword.DO))
-        # continue until reaching (
-        while self.tokenizer.has_more_tokens():
-            if self.is_symbol("("):
-                break
-            # expect termianl expressions
-            token_type, token = self.eat()
-            child = TerminalNode(token_type, token)
-            node.add(child)
+        # variable's method
+        if context.local_symbols.has_name(identifier.token) or context.global_symbols.has_name(identifier.token):
+            name = identifier.token
+            if context.local_symbols.has_name(name):
+                symbol = context.local_symbols.get(name)
+            else:
+                symbol = context.global_symbols.get(name)
 
-        # expression list (arguments for the function call)
-        node.add(self.eat_symbol("("))
-        self.compile_expression_list(node)
-        node.add(
-            self.eat_symbol(")"),
-            self.eat_symbol(";"))
+            _ = Helper.eat_symbol(it, ".")
 
-        parent.add(node)
+            # function name
+            type = symbol.type
+            method_name = Helper.eat_identifier(it).token
+            function_name = f"{type}.{method_name}"
 
-    def compile_expression(self, parent: TreeNode):
-        """
-        let a = <expr>;
-        do foo(<expr>, <expr>)
-        a[<expr>]
-        """
-        node = NonTerminalNode(NonTerminalType.EXPRESSION)
-        self.compile_term(node)
-        # termination
-        if any(self.is_symbol(e) for e in ",;)]"):
-            pass
+            # push the variable as the first arugment
+            segment = Helper.symbol_kind_to_segment(symbol.kind)
+            self.writer.write_push(segment, symbol.index)
+            push_this = True
+        # static function or method call
         else:
-            if self.is_symbol():
-                # binary operation
-                node.add(self.eat_symbol())
-                self.compile_term(node)
+            node = next(it)
+            # static function call
+            if Helper.is_symbol(node, "."):
+                function_name = f"{identifier.token}.{Helper.eat_identifier(it).token}"
+            # method call
             else:
-                self.compile_term(node)
-        parent.add(node)
+                method_name = identifier.token
+                function_name = f"{context['class']}.{method_name}"
+
+                # push THIS as the first arugment
+                self.writer.write_push(Segment.POINTER, 0)
+                push_this = True
+                eat_left_paren = False
+        if eat_left_paren:
+            _ = Helper.eat_symbol(it, "(")
+        # parse expression list
+        expression_list = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION_LIST)
+        self.compile_expression_list(context, expression_list)
+
+        _ = Helper.eat_symbol(it, ")")
+
+        # call function
+        nargs = Helper.expression_size(expression_list) + push_this
+        self.writer.write_call(function_name, nargs)
+
+    def compile_do_statement(self, context: Context, root: TreeNode):
+        """calls a function returning nothing
+        """
+        # need a symbol table here!
+        it = root.get_iterator()
+        _ = Helper.eat_keyword(it, Keyword.DO)
+
+        # method call
+        #   do foo(x, y)
+        # static function call
+        #   do Output.printInt(123)
+        # method call
+        #   do p1.dist(p2)
+        # in any case, start with identifier
+        self.compile_call(context, it)
+
+        # remove dummy return value
+        self.writer.write_pop(Segment.TEMP, 0)
+
+    def compile_let_statement(self, context: Context, root: TreeNode):
+        it = root.get_iterator()
+        _ = Helper.eat_keyword(it, Keyword.LET)
+        # variable
+        identifier = Helper.eat_identifier(it)
+        name = identifier.token
+        symbol = context.lookup_symbol(name)
+        index = symbol.index
+        segment = Helper.symbol_kind_to_segment(symbol.kind)
+
+        # can be = or []
+        # a[i] = ...
+        # a = 
+        # array
+        # push base_addr
+        # push index_expr
+        # add
+        # pop pointer 1  (THAT)
+        if Helper.is_symbol(Helper.eat_symbol(it), "["):
+            # push the variable
+            index_expr = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+            self.compile_expression(context, index_expr)
+            self.compile_variable(context, identifier)
+            _ = Helper.eat_symbol(it, "]")
+            _ = Helper.eat_symbol(it, "=")
+            self.writer.write_arithmetic(ArithmeticCommand.ADD)
+
+            # rhs
+            expression = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+            self.compile_expression(context, expression)
+
+            # stack (bottom)
+            # | addr of a[i] | 
+            # | rhs          |
+            #   (top)
+
+            # *(a+i) = rhs 
+
+            # copy the top to (result of rhs) to temp0
+            self.writer.write_pop(Segment.TEMP, 0)
+            # set THAT ot address of a[i]
+            self.writer.write_pop(Segment.POINTER, 1)
+            # pop rhs stored in temp
+            self.writer.write_push(Segment.TEMP, 0)
+            self.writer.write_pop(Segment.THAT, 0)
+        else:
+            # rhs
+            expression = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+            self.compile_expression(context, expression)
+            # pop the stack top to the variable
+            self.writer.write_pop(segment, index)
     
-    def compile_term(self, parent: TreeNode):
+    def compile_while_statement(self, context:Context, root: TreeNode):
+        it = root.get_iterator()
+
+        label_count = context.next_label_count(Keyword.WHILE)
+        exp_label = f"WHILE_EXP{label_count}"
+        end_label = f"WHILE_END{label_count}"
+
+        self.writer.write_label(exp_label)
+        _ = Helper.eat_keyword(it, Keyword.WHILE)
+
+        # expression
+        _ = Helper.eat_symbol(it, "(")
+        expression = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+        self.compile_expression(context, expression)
+        _ = Helper.eat_symbol(it, ")")
+
+        # check end condition
+        self.writer.write_arithmetic(ArithmeticCommand.NOT)
+        self.writer.write_if(end_label)
+
+        # statements
+        _ = Helper.eat_symbol(it, "{")
+        statements = Helper.eat_nonterminal(it, NonTerminalType.STATEMETNS)
+        self.compile_statements(context, statements)
+        # loop top
+        self.writer.write_goto(exp_label)
+        _ = Helper.eat_symbol(it, "}")
+
+        self.writer.write_label(end_label)
+    
+    def compile_if_statement(self, context: Context, root: TreeNode):
+        """
+        <expr>
+        if-goto IFTRUE
+        goto IFFLASE
+        label IFTRUE
+        <true_statements>
+        goto IFEND
+        label IFFALSE (else)
+        <false_statements>
+        label IFEND
+        """
+        it = root.get_iterator()
+        
+        # labels
+        n = context.next_label_count(Keyword.IF)
+        if_true_label = f"IF_TRUE{n}"
+        if_false_label = f"IF_FALSE{n}"
+        if_end_label = f"IF_END{n}"
+        has_else = False
+
+        # if (expr)
+        _ = Helper.eat_keyword(it, Keyword.IF)
+        _ = Helper.eat_symbol(it, "(")
+        expr = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+        _ = Helper.eat_symbol(it, ")")
+        
+        # if true statements
+        _ = Helper.eat_symbol(it, "{")
+        true_statements = Helper.eat_nonterminal(it, NonTerminalType.STATEMETNS)
+        _ = Helper.eat_symbol(it, "}")
+
+        # else statement (optional)
+        if it.has_next():
+            has_else = True
+            _ = Helper.eat_keyword(it, Keyword.ELSE)
+            _ = Helper.eat_symbol(it, "{")
+            false_statements = Helper.eat_nonterminal(it, NonTerminalType.STATEMETNS)
+            _ = Helper.eat_symbol(it, "}")
+
+        self.compile_expression(context, expr)
+        if has_else:
+            self.writer.write_if(if_true_label)     # if-statement
+            self.writer.write_goto(if_false_label)  # else-statement
+            # true
+            self.writer.write_label(if_true_label)
+            self.compile_statements(context, true_statements)
+            self.writer.write_goto(if_end_label)
+            # false
+            self.writer.write_label(if_false_label)
+            self.compile_statements(context, false_statements)
+            self.writer.write_label(if_end_label)
+        else:
+            self.writer.write_if(if_true_label)     # if-statement
+            self.writer.write_goto(if_false_label)  # else-statement
+            # true
+            self.writer.write_label(if_true_label)
+            self.compile_statements(context, true_statements)
+            self.writer.write_label(if_false_label)
+
+    def compile_expression_list(self, context: Context, root: TreeNode):
+        """<expression> (, <expression>)*
+        """
+        it = root.get_iterator()
+        # empty list
+        if not it.has_next():
+            return
+        # at least one expression
+        expression = next(it)
+        self.compile_expression(context, expression)
+        # more expressions
+        while it.has_next():
+            _ = Helper.eat_symbol(it, ",")
+            expression = next(it)
+            self.compile_expression(context, expression)
+    
+    def compile_expression(self, context: Context, root: TreeNode):
+        """term (op term)*
+        x
+        x + y
+        x + (y * z)
+        """
+        it = root.get_iterator()
+        term = Helper.eat(it)
+        if not it.has_next():
+            self.compile_term(context, term)
+        else:
+            symbol = Helper.eat_symbol(it)
+            other = Helper.eat(it)
+            self.compile_term(context, term)
+            self.compile_term(context, other)
+            # handle operation
+            if symbol.token == "*":
+                self.writer.write_call("Math.multiply", 2)
+            elif symbol.token == "/":
+                self.writer.write_call("Math.divide", 2)
+            else:
+                # to avoid confusion with neg
+                if symbol.token == "-":
+                    cmd = ArithmeticCommand.SUB
+                else:
+                    cmd = ArithmeticCommand.from_symbol(symbol.token)
+                self.writer.write_arithmetic(cmd)
+        
+    def compile_string_const(self, context: Context, root: TreeNode):
+        value = root.token
+        # allocate memory size of l then append each char
+        self.writer.write_push(Segment.CONSTANT, len(value))
+        self.writer.write_call("String.new", 1)
+        for c in map(ord, value):
+            self.writer.write_push(Segment.CONSTANT, c)
+            self.writer.write_call("String.appendChar", 2)
+    
+    def compile_variable(self, context: Context, root: TreeNode):
+        name = root.token
+        symbol = context.lookup_symbol(name)
+        segment = Helper.symbol_kind_to_segment(symbol.kind)
+        self.writer.write_push(segment, symbol.index)
+
+    def compile_term(self, context: Context, root: TreeNode):
         """
         x
-        a[i]
-        foo.bar()
-        "hogehoge"
-        1
-        (x+1) * (y+2)
-        ~flag
+        -x
+        ((x+y)*2)
+        Memory.peek(8000)
+        variable
+        "abcdefg"
         """
-        node = NonTerminalNode(NonTerminalType.TERM)
-        # start of another expression
-        if self.is_symbol("("):
-            node.add(self.eat_symbol("("))
-            self.compile_expression(node)
-            node.add(self.eat_symbol(")"))
+        it = root.get_iterator()
+        node = Helper.eat(it)
+        # integer constant
+        if node.is_terminal() and node.token_type == TokenType.INT_CONST:
+            value = int(node.token)
+            self.writer.write_push(Segment.CONSTANT, value)
+        # string constant
+        elif node.is_terminal() and node.token_type == TokenType.STRING_CONST:
+            self.compile_string_const(context, node)
         # unary operation
-        elif self.is_symbol():
-            # expect ~ or -
-            symbol = self.tokenizer.symbol()
-            if symbol not in "-~":
-                raise SyntaxError(f"unexpected unary operator {symbol}")
-            node.add(self.eat_symbol(symbol))
-            if self.is_symbol("("):
-                self.compile_term(node)
-            # otherwise, an identifier should follow
+        elif Helper.is_symbol(node, "-"):
+            term = Helper.eat_nonterminal(it, NonTerminalType.TERM)
+            self.compile_term(context, term)
+            self.writer.write_arithmetic(ArithmeticCommand.NEG)
+        elif Helper.is_symbol(node, "~"):
+            term = Helper.eat_nonterminal(it, NonTerminalType.TERM)
+            self.compile_term(context, term)
+            self.writer.write_arithmetic(ArithmeticCommand.NOT)
+        # boolean
+        elif Helper.is_keyword(node, Keyword.TRUE):
+            # push -1
+            self.writer.write_push(Segment.CONSTANT, 0)
+            self.writer.write_arithmetic(ArithmeticCommand.NOT)
+        elif Helper.is_keyword(node, Keyword.FALSE):
+            self.writer.write_push(Segment.CONSTANT, 0)
+        # null
+        elif Helper.is_keyword(node, Keyword.NULL):
+            # push -1
+            self.writer.write_push(Segment.CONSTANT, 0)
+        # this
+        elif Helper.is_keyword(node, Keyword.THIS):
+            self.writer.write_push(Segment.POINTER, 0)
+        # expression enclosed by parentheses
+        elif Helper.is_symbol(node, "("):
+            expression = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+            self.compile_expression(context, expression)
+            _ = Helper.eat_symbol(it, ")")
+        elif Helper.is_identifier(node):
+            if it.has_next():
+                # is array?
+                nxt = it.current_value() 
+                if Helper.is_symbol(nxt, "["):
+                    # index
+                    _ = Helper.eat(it)
+                    expr = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+                    self.compile_expression(context, expr)
+                    self.compile_variable(context, node)
+                    _ = Helper.eat(it)
+                    # address = base address + index
+                    self.writer.write_arithmetic(ArithmeticCommand.ADD)
+                    # THAT
+                    self.writer.write_pop(Segment.POINTER, 1)
+                    # push *that
+                    self.writer.write_push(Segment.THAT, 0)
+                # otherwise should be function call
+                else:
+                    self.compile_call(context, root.get_iterator())
+            # variable
             else:
-                self.compile_term(node)
-        # otherwise it must be an expression
+                self.compile_variable(context, node)
         else:
-            node.add(self.eat_terminal())
-
-        # array
-        if self.is_symbol("["):
-            node.add(self.eat_symbol("["))
-            self.compile_expression(node)
-            node.add(self.eat_symbol("]"))
-        # function call
-        elif self.is_symbol("."):
-            node.add(
-                self.eat_symbol("."),
-                self.eat_identifier(), # funcition name
-                self.eat_symbol("(")
-            )
-            self.compile_expression_list(node)
-            node.add(self.eat_symbol(")"))
-        # member function call
-        elif self.is_symbol("("):
-            node.add(self.eat_symbol("("))
-            self.compile_expression_list(node)
-            node.add(self.eat_symbol(")"))
-
-        parent.add(node)
+            print("term not defined: ", root)
     
-    def compile_expression_list(self, parent: TreeNode):
-        """
-        ()
-        (x)
-        (x, y)
-        """
-        node = NonTerminalNode(NonTerminalType.EXPRESSION_LIST)
-        while self.tokenizer.has_more_tokens() and not self.is_symbol(")"):
-            self.compile_expression(node)
-            if self.is_symbol(","):
-                node.add(
-                    self.eat_symbol(",")
-                )
-        parent.add(node)
-    
-    def compile_return(self, parent: TreeNode):
-        """
-        return x;
-        return;
-        return (x+y) - 2;
-        """
-        node = NonTerminalNode(NonTerminalType.RETURN_STATEMENT)
-        node.add(self.eat_keyword(Keyword.RETURN))
-        if not self.is_symbol(";"):
-            self.compile_expression(node)
-        node.add(self.eat_symbol(";"))
-        parent.add(node)
-    
-    def compile_if_statement(self, parent: TreeNode):
-        """
-        if (<expression>) {
-            <statements>
-        }
-
-        if (<expression>) {
-            <statements>
-        }
-        else {
-            <statements>
-        }
-        """
-        node = NonTerminalNode(NonTerminalType.IF_STATEMENT)
-        node.add(
-            self.eat_keyword(Keyword.IF),
-            self.eat_symbol("(")
-        )
-        self.compile_expression(node)
-        node.add(
-            self.eat_symbol(")"),
-            self.eat_symbol("{"))
-        self.compile_statements(node)
-        node.add(
-            self.eat_symbol("}")
-        )
-        # else-statement is optional
-        if self.is_keyword(Keyword.ELSE):
-            node.add(
-                self.eat_keyword(Keyword.ELSE),
-                self.eat_symbol("{")
-            )
-            self.compile_statements(node)
-            node.add(
-                self.eat_symbol("}")
-            )
-        parent.add(node)
-    
-    def compile_while_statement(self, parent: TreeNode):
-        """
-        while (<expression>) {
-            <statements>
-        }
-        """
-        node = NonTerminalNode(NonTerminalType.WHILE_STATEMENT)
-        node.add(
-            self.eat_keyword(Keyword.WHILE),
-            self.eat_symbol("(")
-        )
-        self.compile_expression(node)
-        node.add(
-            self.eat_symbol(")"),
-            self.eat_symbol("{"))
-        self.compile_statements(node)
-        node.add(
-            self.eat_symbol("}")
-        )
-        parent.add(node)
+    def compile_return_statement(self, context: Context, root: TreeNode):
+        it = root.get_iterator()
+        _ = Helper.eat_keyword(it)
+        if context["return_type"] == "void":
+            # push dummy
+            self.writer.write_push(Segment.CONSTANT, 0)
+        elif context["function_type"] == Keyword.CONSTRUCTOR:
+            # expect return this;
+            expr = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+            term = Helper.eat_nonterminal(expr.get_iterator(), NonTerminalType.TERM)
+            _ = Helper.eat_keyword(term.get_iterator(), Keyword.THIS)
+            self.writer.write_push(Segment.POINTER, 0)
+        else:
+            expr = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+            self.compile_expression(context, expr)
+        self.writer.write_return()
 
 
 def main():
     import sys
+    from JackTokenizer import JackTokenizer
+    from ParseTree import ParseTreeBuilder
     input_filename = sys.argv[1]
     input_file = open(input_filename, "r")
     tokenizer = JackTokenizer(input_file)
 
-    output_filename = input_filename.replace(".jack", ".mine.xml")
+    output_filename = input_filename.replace(".jack", ".vm")
     output_file = open(output_filename, "w")
     # output_file = sys.stdout
+    writer = VMWriter(output_file)
 
-    engine = CompilationEngine(tokenizer, output_file)
-    engine.compile_class()
-    engine.write()
+    # analyze
+    tree_builder = ParseTreeBuilder(tokenizer)
+    tree = tree_builder.build()
+
+    # compile
+    compiler = CompilationEngine(writer)
+    compiler.compile_class(tree)
 
     input_file.close()
     output_file.close()

@@ -1,5 +1,7 @@
-from CompilationEngine import ParseTreeBuilder
+from ParseTree import ParseTreeBuilder
+from CompilationEngine import CompilationEngine
 from JackTokenizer import JackTokenizer
+from VMWriter import VMWriter
 
 
 def main():
@@ -17,20 +19,24 @@ def main():
     for input_filename in input_files:
         input_file = open(input_filename, "r")
         tokenizer = JackTokenizer(input_file)
-        print(f"Analyzing {input_filename}")
+        print(f"Compiling {input_filename}")
 
-        output_filename = input_filename.replace(".jack", ".xml")
-        output_file = open(output_filename, "w")
-
+        # parse the input
         tree_builder = ParseTreeBuilder(tokenizer)
         tree = tree_builder.build()
-        tree.to_xml(output_file)
+
+        # compile
+        output_filename = input_filename.replace(".jack", ".vm")
+        output_file = open(output_filename, "w")
+        writer = VMWriter(output_file)
+
+        compiler = CompilationEngine(writer)
+        compiler.compile_class(tree)
 
         input_file.close()
         output_file.close()
 
         print(f"Saved {input_filename}")
-
 
 
 if __name__ == "__main__":

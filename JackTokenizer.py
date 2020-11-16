@@ -1,57 +1,4 @@
-import enum
-
-
-class StringEnum(enum.Enum):
-
-    @classmethod
-    def from_str(cls, s: str) -> "StringEnum":
-        for e in cls:
-            if e.value == s:
-                return e
-        raise ValueError(f"{s} is not defined in {cls.__name__}")
-
-    @classmethod
-    def has_value(cls, value: str) -> bool:
-        return any(value == e.value for e in cls)
-
-
-class TokenType(StringEnum):
-
-    UNKNOWN = "unknown"
-    # termianl
-    KEYWORD = "keyword"
-    SYMBOL = "symbol"
-    IDENTIFIER = "identifier"
-    INT_CONST = "integerConstant"
-    STRING_CONST = "stringConstant"
-    RETURN = "return"
-    
-    NONTERMINAL = "nonterminal"
-
-
-class Keyword(StringEnum):
-
-    CLASS = "class"
-    METHOD = "method"
-    FUNCTION = "function"
-    CONSTRUCTOR = "constructor"
-    INT = "int"
-    BOOLEAN = "boolean"
-    CHAR = "char"
-    VOID = "void"
-    VAR = "var"
-    STATIC = "static"
-    FIELD = "field"
-    LET = "let"
-    DO = "do"
-    IF = "if"
-    ELSE = "else"
-    WHILE = "while"
-    RETURN = "return"
-    TRUE = "true"
-    FALSE = "false"
-    NULL = "null"
-    THIS = "this"
+from constants import TokenType, Keyword
 
 
 class Reader:
@@ -108,6 +55,8 @@ class Reader:
         self.line = self.line[i+len(s):]
 
     def move(self, d: int):
+        """move 'd' characters then skip blanks
+        """
         while d > len(self.line):
             d -= len(self.line)
             if not self.readline():
@@ -176,14 +125,7 @@ class JackTokenizer:
         while True:
             word = self.reader.head_word()
             # handle multi-line comments
-            if is_comment:
-                if word.startswith("*/"):
-                    is_comment = False
-                    self.reader.move(2)
-                    continue
-                else:
-                    self.reader.readline()
-                    continue
+            # start multiline comment
             if word.startswith("/*"):
                 i = self.reader.line.find("*/")
                 # can be one line comment
@@ -192,7 +134,16 @@ class JackTokenizer:
                 # otherwise skip the line
                 else:
                     is_comment = True
-                    self.reader.move(i)
+                    self.reader.readline()
+                continue
+            # middle of multiline comment
+            elif is_comment:
+                i = self.reader.line.find("*/")
+                if i >= 0:
+                    is_comment = False
+                    self.reader.move(i+2)
+                else:
+                    self.reader.readline()
                 continue
             # skip line comment
             if word.startswith("//"):
