@@ -86,6 +86,18 @@ class Helper:
             return sum(Helper.is_symbol(c, ",") for c in node.children) + 1
         else:
             raise ValueError
+        jo
+    @classmethod
+    def count_fields(cls, node: TreeNode) -> int:
+        if NonTerminalType.CLASS_VAR_DEC.is_same(node.name):
+            it = node.get_iterator()
+            k = Helper.eat_keyword(it)
+            if Helper.is_keyword(k, Keyword.FIELD):
+                return cls.count_variables(node)
+            else:
+                return 0
+        else:
+            raise ValueError
     
     @classmethod
     def symbol_kind_to_segment(cls, kind: SymbolKind) -> Segment:
@@ -180,7 +192,7 @@ class CompilationEngine:
 
             # class variables
             if Helper.is_nonterminal(node, NonTerminalType.CLASS_VAR_DEC):
-                context["nfields"] += Helper.count_variables(node)
+                context["nfields"] += Helper.count_fields(node)
                 self.compile_class_var_decl(context, node)
                 continue
 
@@ -298,8 +310,14 @@ class CompilationEngine:
                 break
     
     def compile_class_var_decl(self, context: Context, root: TreeNode):
-        # TODO static variable:
-        self.process_variable_decl(root, context.global_symbols, SymbolKind.FIELD)
+        it = root.get_iterator()
+        kwd = Helper.eat_keyword(it)
+        if Helper.is_keyword(kwd, Keyword.FIELD):
+            self.process_variable_decl(root, context.global_symbols, SymbolKind.FIELD)
+        elif Helper.is_keyword(kwd, Keyword.STATIC):
+            self.process_variable_decl(root, context.global_symbols, SymbolKind.STATIC)
+        else:
+            raise ValueError
 
     def compile_var_decl(self, context: Context, root: TreeNode):
         """
@@ -631,6 +649,10 @@ class CompilationEngine:
             self.writer.write_push(Segment.CONSTANT, 0)
             self.writer.write_arithmetic(ArithmeticCommand.NOT)
         elif Helper.is_keyword(node, Keyword.FALSE):
+            self.writer.write_push(Segment.CONSTANT, 0)
+        # null
+        elif Helper.is_keyword(node, Keyword.NULL):
+            # push -1
             self.writer.write_push(Segment.CONSTANT, 0)
         # this
         elif Helper.is_keyword(node, Keyword.THIS):
