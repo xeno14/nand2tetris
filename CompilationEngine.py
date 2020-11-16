@@ -117,7 +117,7 @@ class Context(dict):
     def clear_local_symbols(self):
         self.local_symbols = SymbolTable()
     
-    def lookup_symbol(self, name: str) -> Symbol:
+    def lookup_symbol(self, name: str) -> Optional[Symbol]:
         """look up a symbol in local then global
         """
         if name in self.local_symbols.table:
@@ -125,7 +125,7 @@ class Context(dict):
         elif name in self.global_symbols.table:
             return self.global_symbols.table[name]
         else:
-            raise KeyError(f"undefined variable {name}")
+            return None
 
     def nlocals(self):
         return len(self.local_symbols.table)
@@ -394,14 +394,51 @@ class CompilationEngine:
         # variable
         identifier = Helper.eat_identifier(it)
         name = identifier.token
-
-        _ = Helper.eat_symbol(it, "=")
-        expression = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
-        self.compile_expression(context, expression)
-        # pop the stack top to the variable
         symbol = context.lookup_symbol(name)
+        index = symbol.index
         segment = Helper.symbol_kind_to_segment(symbol.kind)
-        self.writer.write_pop(segment, symbol.index)
+
+        # can be = or []
+        # a[i] = ...
+        # a = 
+        # array
+        # push base_addr
+        # push index_expr
+        # add
+        # pop pointer 1  (THAT)
+        if Helper.is_symbol(Helper.eat_symbol(it), "["):
+            # push the variable
+            index_expr = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+            self.compile_expression(context, index_expr)
+            self.compile_variable(context, identifier)
+            _ = Helper.eat_symbol(it, "]")
+            _ = Helper.eat_symbol(it, "=")
+            self.writer.write_arithmetic(ArithmeticCommand.ADD)
+
+            # rhs
+            expression = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+            self.compile_expression(context, expression)
+
+            # stack (bottom)
+            # | addr of a[i] | 
+            # | rhs          |
+            #   (top)
+
+            # *(a+i) = rhs 
+
+            # copy the top to (result of rhs) to temp0
+            self.writer.write_pop(Segment.TEMP, 0)
+            # set THAT ot address of a[i]
+            self.writer.write_pop(Segment.POINTER, 1)
+            # pop rhs stored in temp
+            self.writer.write_push(Segment.TEMP, 0)
+            self.writer.write_pop(Segment.THAT, 0)
+        else:
+            # rhs
+            expression = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+            self.compile_expression(context, expression)
+            # pop the stack top to the variable
+            self.writer.write_pop(segment, index)
     
     def compile_while_statement(self, context:Context, root: TreeNode):
         it = root.get_iterator()
@@ -536,6 +573,21 @@ class CompilationEngine:
                 else:
                     cmd = ArithmeticCommand.from_symbol(symbol.token)
                 self.writer.write_arithmetic(cmd)
+        
+    def compile_string_const(self, context: Context, root: TreeNode):
+        value = root.token
+        # allocate memory size of l then append each char
+        self.writer.write_push(Segment.CONSTANT, len(value))
+        self.writer.write_call("String.new", 1)
+        for c in map(ord, value):
+            self.writer.write_push(Segment.CONSTANT, c)
+            self.writer.write_call("String.appendChar", 2)
+    
+    def compile_variable(self, context: Context, root: TreeNode):
+        name = root.token
+        symbol = context.lookup_symbol(name)
+        segment = Helper.symbol_kind_to_segment(symbol.kind)
+        self.writer.write_push(segment, symbol.index)
 
     def compile_term(self, context: Context, root: TreeNode):
         """
@@ -544,6 +596,7 @@ class CompilationEngine:
         ((x+y)*2)
         Memory.peek(8000)
         variable
+        "abcdefg"
         """
         it = root.get_iterator()
         node = Helper.eat(it)
@@ -551,6 +604,9 @@ class CompilationEngine:
         if node.is_terminal() and node.token_type == TokenType.INT_CONST:
             value = int(node.token)
             self.writer.write_push(Segment.CONSTANT, value)
+        # string constant
+        elif node.is_terminal() and node.token_type == TokenType.STRING_CONST:
+            self.compile_string_const(context, node)
         # unary operation
         elif Helper.is_symbol(node, "-"):
             term = Helper.eat_nonterminal(it, NonTerminalType.TERM)
@@ -576,14 +632,23 @@ class CompilationEngine:
             self.compile_expression(context, expression)
             _ = Helper.eat_symbol(it, ")")
         elif Helper.is_identifier(node):
-            # function call or variable
             if it.has_next():
-                self.compile_call(context, root.get_iterator())
+                # is array?
+                nxt = it.current_value() 
+                if Helper.is_symbol(nxt, "["):
+                    self.compile_variable(context, node)
+                    # index
+                    _ = Helper.eat(it)
+                    expr = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+                    _ = Helper.eat(it)
+                    # address = base address + index
+                    self.writer.write_arithmetic(ArithmeticCommand.ADD)
+                # otherwise should be function call
+                else:
+                    self.compile_call(context, root.get_iterator())
+            # variable
             else:
-                name = node.token
-                symbol = context.lookup_symbol(name)
-                segment = Helper.symbol_kind_to_segment(symbol.kind)
-                self.writer.write_push(segment, symbol.index)
+                self.compile_variable(context, node)
         else:
             print("term not defined: ", root)
     
