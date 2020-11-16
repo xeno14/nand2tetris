@@ -636,13 +636,18 @@ class CompilationEngine:
                 # is array?
                 nxt = it.current_value() 
                 if Helper.is_symbol(nxt, "["):
-                    self.compile_variable(context, node)
                     # index
                     _ = Helper.eat(it)
                     expr = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
+                    self.compile_expression(context, expr)
+                    self.compile_variable(context, node)
                     _ = Helper.eat(it)
                     # address = base address + index
                     self.writer.write_arithmetic(ArithmeticCommand.ADD)
+                    # THAT
+                    self.writer.write_pop(Segment.POINTER, 1)
+                    # push *that
+                    self.writer.write_push(Segment.THAT, 0)
                 # otherwise should be function call
                 else:
                     self.compile_call(context, root.get_iterator())
