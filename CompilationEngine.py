@@ -114,11 +114,11 @@ class CompilationEngine:
         while it.has_next():
             node = next(it)
             # print(node.name)
-            self.compile_subroutine(node, context)
+            self.compile_subroutine(context, node)
             break
         # }
     
-    def compile_subroutine(self, root: TreeNode, context: Context):
+    def compile_subroutine(self, context: Context, root: TreeNode):
         it = root.get_iterator()
         # expect 'constructor', 'function' or 'method
         node = Helper.eat_keyword(it)
@@ -147,31 +147,31 @@ class CompilationEngine:
 
         context["return_type"] = return_type.token
         
-        self.compile_subroutine_body(body, context)
+        self.compile_subroutine_body(context, body)
         
         # moved out of function. remove it!
         del context["return_type"]
     
-    def compile_subroutine_body(self, root: TreeNode, context: Context):
+    def compile_subroutine_body(self, context: Context, root: TreeNode):
         it = root.get_iterator()
         _ = Helper.eat_symbol(it, "{")
 
         # statements
         statements = Helper.eat_nonterminal(it, NonTerminalType.STATEMETNS)
-        self.compile_statements(statements, context)
+        self.compile_statements(context, statements)
 
         _ = Helper.eat_symbol(it, "}")
     
-    def compile_statements(self, root: TreeNode, context: Context):
+    def compile_statements(self, context: Context, root: TreeNode):
         for statement in root.loop_children():
             if NonTerminalType.DO_STATEMENT.is_same(statement.name):
-                self.compile_do_statement(statement, context)
+                self.compile_do_statement(context, statement)
             elif NonTerminalType.RETURN_STATEMENT.is_same(statement.name):
-                self.compile_return_statement(statement, context)
+                self.compile_return_statement(context, statement)
             else:
                 raise NotImplementedError(statement.name)
     
-    def compile_do_statement(self, root: TreeNode, context: Context):
+    def compile_do_statement(self, context: Context, root: TreeNode):
         """calls a function returning nothing
         """
         # need a symbol table here!
@@ -204,7 +204,7 @@ class CompilationEngine:
         _ = Helper.eat_symbol(it, "(")
         # parse expression list
         expression_list = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION_LIST)
-        self.compile_expression_list(expression_list, context)
+        self.compile_expression_list(context, expression_list)
         _ = Helper.eat_symbol(it, ")")
 
         # call function
@@ -215,7 +215,7 @@ class CompilationEngine:
         self.writer.write_pop(Segment.TEMP, 0)
 
     
-    def compile_expression_list(self, root: TreeNode, context: Context):
+    def compile_expression_list(self, context: Context, root: TreeNode):
         """<expression> (, <expression>)*
         """
         it = root.get_iterator()
@@ -224,14 +224,14 @@ class CompilationEngine:
             return
         # at least one expression
         expression = next(it)
-        self.compile_expression(expression, context)
+        self.compile_expression(context, expression)
         # more expressions
         while it.has_next():
             _ = Helper.eat_symbol(it, ",")
             expression = next(it)
-            self.compile_expression(expression, context)
+            self.compile_expression(context, expression)
     
-    def compile_expression(self, root: TreeNode, context: Context):
+    def compile_expression(self, context: Context, root: TreeNode):
         """term (op term)*
         x
         x + y
@@ -240,12 +240,12 @@ class CompilationEngine:
         it = root.get_iterator()
         term = Helper.eat(it)
         if not it.has_next():
-            self.compile_term(term, context)
+            self.compile_term(context, term)
         else:
             symbol = Helper.eat_symbol(it)
             other = Helper.eat(it)
-            self.compile_term(term, context)
-            self.compile_term(other, context)
+            self.compile_term(context, term)
+            self.compile_term(context, other)
             # handle operation
             if symbol.token == "*":
                 self.writer.write_call("Math.multiply", 2)
@@ -256,7 +256,7 @@ class CompilationEngine:
                 self.writer.write_arithmetic(cmd)
                 
 
-    def compile_term(self, root: TreeNode, context: Context):
+    def compile_term(self, context: Context, root: TreeNode):
         # TODO
         it = root.get_iterator()
         node = Helper.eat(it)
@@ -266,12 +266,12 @@ class CompilationEngine:
         elif Helper.is_symbol(node, "("):
             # start of new expression?
             expression = Helper.eat_nonterminal(it, NonTerminalType.EXPRESSION)
-            self.compile_expression(expression, context)
+            self.compile_expression(context, expression)
             _ = Helper.eat_symbol(it, ")")
         else:
             raise NotImplementedError
     
-    def compile_return_statement(self, root: TreeNode, context: Context):
+    def compile_return_statement(self, context: Context, root: TreeNode):
         if context["return_type"] == "void":
             # push dummy
             self.writer.write_push(Segment.CONSTANT, 0)
