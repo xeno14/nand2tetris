@@ -1,6 +1,6 @@
 #!/bin/bash
 
-find os/*.jack | while read src; do
+find os/*.jack | grep 'Math' | while read src; do
     name=$(basename ${src/.jack//})
     dst_dir="projects/12/${name}Test/"
     tools/JackCompiler.sh $src
