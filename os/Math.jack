@@ -1,0 +1,18 @@
+class Math {
+
+    function void init() {
+        return;
+    }
+
+    function int multiply(int x, int y) {
+        return 0;
+    }
+
+    function int divide(int x, int y) {
+        return 0;
+    }
+
+    function int sqrt(int x) {
+        return 0;
+    }
+}
