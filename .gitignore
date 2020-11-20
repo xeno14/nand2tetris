@@ -130,3 +130,7 @@ dmypy.json
 
 # VM code
 *.vm
+
+*.zip
+projects
+tools
