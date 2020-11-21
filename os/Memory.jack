@@ -45,9 +45,10 @@ class Memory {
         let addr = freeList;
         while (addr) {
             let freeSize = heap[addr+1];
+            // find first
             // freeSize >= size+2
             if (~(freeSize<size+2)) {
-                // decrement the size
+                // create a new fragment
                 let heap[addr+1] = freeSize - size - 2;
                 let newAddr = addr + heap[addr+1] + 2;
                 let heap[newAddr-2] = 0;
