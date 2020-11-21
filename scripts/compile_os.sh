@@ -1,6 +1,8 @@
 #!/bin/bash
 
-find os/*.jack | grep 'Sys' | while read src; do
+set -e
+
+find os/*.jack | grep 'Screen' | while read src; do
     name=$(basename ${src/.jack//})
     dst_dir="projects/12/${name}Test/"
     tools/JackCompiler.sh $src
