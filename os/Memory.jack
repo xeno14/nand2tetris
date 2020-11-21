@@ -52,7 +52,7 @@ class Memory {
                 let newAddr = addr+RAM[addr+1]+4;
                 let RAM[newAddr-2] = 0;     // next
                 let RAM[newAddr-1] = size;  // size
-                return newAddr+2;
+                return newAddr;
             }
             let addr = RAM[addr];
         }
