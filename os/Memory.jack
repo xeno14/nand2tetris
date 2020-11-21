@@ -9,21 +9,20 @@
  * consists of 32,768 words, each holding a 16-bit binary number.
  */ 
  /**
-  * Fragment heap using linked list.
+  * Fragment RAM using linked list.
   *
   */
 class Memory {
 
-    static Array heap, RAM;
+    static Array RAM;
     static int freeList;
 
     /** Initializes the class. */
     function void init() {
         let RAM = 0;
-        let heap = 2048;
-        let heap[0] = 0;      // next
-        let heap[1] = 14335;  // size
         let freeList = 2048;
+        let RAM[freeList] = 0;          // next
+        let RAM[freeList+1] = 14335;    // size
         return;
     }
 
@@ -41,34 +40,32 @@ class Memory {
     /** Finds an available RAM block of the given size and returns
      *  a reference to its base address. */
     function int alloc(int size) {
-        var int addr, freeSize, res, newAddr;
+        var int addr, res, newAddr;
         let addr = freeList;
-        while (addr) {
-            let freeSize = heap[addr+1];
+        while (addr > 0) {
             // find first
-            // freeSize >= size+2
-            if (~(freeSize<size+2)) {
+            // fragment size >= size+2
+            if (~(RAM[addr+1]<(size+2))) {
+                // decrement the current size
+                let RAM[addr+1] = RAM[addr+1] - (size + 2);
                 // create a new fragment
-                let heap[addr+1] = freeSize - size - 2;
-                let newAddr = addr + heap[addr+1] + 2;
-                let heap[newAddr-2] = 0;
-                let heap[newAddr-1] = size;
-                return newAddr;
+                let newAddr = addr+RAM[addr+1]+4;
+                let RAM[newAddr-2] = 0;     // next
+                let RAM[newAddr-1] = size;  // size
+                return newAddr+2;
             }
-            let addr = heap[addr];
+            let addr = RAM[addr];
         }
         // unable to allocate...
-        do Output.printString("Unable to allocate memory");
-        do Sys.halt();
-        return;
+        return 0;
     }
 
     /** De-allocates the given object (cast as an array) by making
      *  it available for future allocations. */
     function void deAlloc(Array o) {
         // prepend the fragment
-        let heap[o-2] = freeList;
-        let freeList = o;
+        let RAM[o-2] = freeList;  // next
+        let freeList = o-2;
         return;
     }    
 }
