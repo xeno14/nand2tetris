@@ -57,6 +57,7 @@ class Memory {
             let addr = RAM[addr];
         }
         // unable to allocate...
+        // TODO defrag and try again
         return 0;
     }
 
